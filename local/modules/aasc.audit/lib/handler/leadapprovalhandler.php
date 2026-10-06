@@ -142,21 +142,44 @@ class LeadApprovalHandler
             $redisPass    = $_ENV['REDIS_PASSWORD'] ?? getenv('REDIS_PASSWORD') ?: '';
             $redisChannel = $_ENV['REDIS_CHANNEL'] ?? getenv('REDIS_CHANNEL') ?: 'bitrix:pull:events';
 
-            $redis = new \Redis();
-            if ($redis->connect($redisHost, $redisPort, 1.0)) {
-                if (!empty($redisPass)) {
-                    $redis->auth($redisPass);
+            $payload = json_encode([
+                'event'       => 'onCrmLeadCreate',
+                'leadId'      => $leadId,
+                'title'       => $arFields['TITLE'] ?? '',
+                'companyName' => $arFields['COMPANY_TITLE'] ?? '',
+                'assignedTo'  => $managerId ?? 1,
+                'timestamp'   => time(),
+                'data'        => [
+                    'ID'            => $leadId,
+                    'TITLE'         => $arFields['TITLE'] ?? '',
+                    'COMPANY_TITLE' => $arFields['COMPANY_TITLE'] ?? '',
+                    'NAME'          => $arFields['NAME'] ?? '',
+                    'EMAIL'         => $arFields['EMAIL'] ?? '',
+                    'PHONE'         => $arFields['PHONE'] ?? '',
+                ],
+            ], JSON_UNESCAPED_UNICODE);
+
+            if (class_exists('\Redis')) {
+                $redis = new \Redis();
+                if ($redis->connect($redisHost, $redisPort, 1.0)) {
+                    if (!empty($redisPass)) {
+                        $redis->auth($redisPass);
+                    }
+                    $redis->publish($redisChannel, $payload);
+                    $redis->close();
                 }
-                $payload = json_encode([
-                    'event'       => 'onCrmLeadCreate',
-                    'leadId'      => $leadId,
-                    'title'       => $arFields['TITLE'] ?? '',
-                    'companyName' => $arFields['COMPANY_TITLE'] ?? '',
-                    'assignedTo'  => $managerId ?? 1,
-                    'timestamp'   => time(),
-                ], JSON_UNESCAPED_UNICODE);
-                $redis->publish($redisChannel, $payload);
-                $redis->close();
+            } else {
+                // Fallback socket publish cho môi trường không có ext-redis (ví dụ Windows dev)
+                $fp = @fsockopen($redisHost, $redisPort, $errno, $errstr, 1.0);
+                if ($fp) {
+                    if (!empty($redisPass)) {
+                        fwrite($fp, "*2\r\n$4\r\nAUTH\r\n$" . strlen($redisPass) . "\r\n$redisPass\r\n");
+                        fgets($fp);
+                    }
+                    fwrite($fp, "*3\r\n$7\r\nPUBLISH\r\n$" . strlen($redisChannel) . "\r\n$redisChannel\r\n$" . strlen($payload) . "\r\n$payload\r\n");
+                    fgets($fp);
+                    fclose($fp);
+                }
             }
         } catch (\Throwable $e) {
             // Không làm gián đoạn luồng nghiệp vụ nếu Redis tạm thời gián đoạn
