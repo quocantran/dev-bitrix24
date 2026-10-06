@@ -1,0 +1,8 @@
+/* Định dạng nội dung chi tiết vùng Work Area */
+p { margin-bottom: 1rem; line-height: 1.7; }
+a { color: #2b6cb0; text-decoration: none; }
+a:hover { text-decoration: underline; }
+h2 { color: #2d3748; margin-top: 1.5rem; margin-bottom: 1rem; font-size: 1.4rem; }
+h3 { color: #4a5568; margin-top: 1.2rem; margin-bottom: 0.8rem; font-size: 1.2rem; }
+ul, ol { margin-left: 1.5rem; margin-bottom: 1rem; }
+li { margin-bottom: 0.5rem; }

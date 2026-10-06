@@ -1,0 +1,53 @@
+name: CI/CD Pipeline - Deploy to VMware
+
+on:
+  push:
+    branches:
+      - master
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to Production / Staging
+    runs-on: self-hosted
+
+    steps:
+      - name: 1. Checkout source code
+        uses: actions/checkout@v4
+
+      - name: 2. Install Composer dependencies
+        run: |
+          composer install --no-dev --optimize-autoloader --no-interaction
+
+      - name: 3. Sync code into Webroot
+        run: |
+          # Đồng bộ các thư mục custom vào webroot (không đụng vào /bitrix/ và /upload/)
+          rsync -av --delete local/ /var/www/html/local/
+          rsync -av --delete portal/ /var/www/html/portal/
+          rsync -av --delete vendor/ /var/www/html/vendor/
+
+      - name: 4. Ensure Linux permissions
+        run: |
+          sudo chown -R bitrix:nginx /var/www/html/local /var/www/html/portal /var/www/html/vendor
+          sudo find /var/www/html/local /var/www/html/portal -type d -exec chmod 775 {} +
+          sudo find /var/www/html/local /var/www/html/portal -type f -exec chmod 664 {} +
+
+      - name: 5. Clear Bitrix System Cache
+        run: |
+          php -r '
+          $_SERVER["DOCUMENT_ROOT"] = "/var/www/html";
+          define("NO_KEEP_STATISTIC", true);
+          define("NOT_CHECK_PERMISSIONS", true);
+          require("/var/www/html/bitrix/modules/main/include/prolog_before.php");
+          \Bitrix\Main\Data\Cache::cleanDir();
+          if (function_exists("BXClearCache")) {
+              \BXClearCache(true);
+          }
+          if (\Bitrix\Main\Loader::includeModule("pull")) {
+              \CPullOptions::SendConfigDie();
+          }
+          '
+
+      - name: 6. Reload PHP-FPM service
+        run: |
+          sudo systemctl reload php-fpm
