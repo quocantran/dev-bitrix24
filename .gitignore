@@ -1,18 +1,22 @@
 # ==========================================
-# AASC Audit Platform - Git Ignore Rules
+# dev-bitrix24 - Git Ignore Rules
 # ==========================================
 
 # 1. Environment & Sensitive Configs
 .env
 .env.local
 .env.*.local
+*.env
 
 # 2. Composer Dependencies
 /vendor/
+vendor/
 
 # 3. Bitrix Core & Uploads (DO NOT COMMIT)
 /bitrix/
+bitrix/
 /upload/
+upload/
 
 # 4. Logs, Dumps & Temporary Files
 *.log
@@ -21,6 +25,7 @@
 *.zip
 /tmp/
 /scratch/
+scratch/
 
 # 5. IDE & Operating System
 .idea/
