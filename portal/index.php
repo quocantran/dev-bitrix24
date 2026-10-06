@@ -14,7 +14,7 @@ $APPLICATION->SetTitle("Cổng Thông Tin Dịch Vụ - Hãng Kiểm Toán AASC"
                 Danh Mục Dịch Vụ &rarr;
             </a>
             <a href="/portal/request/" style="background: #ed8936; color: #ffffff; padding: 0.75rem 1.5rem; border-radius: 4px; font-weight: 600; text-decoration: none; font-size: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                Gửi Yêu Cầu Báo Giá
+                Gửi Yêu Cầu Báo Giá Test
             </a>
         </div>
     </div>
