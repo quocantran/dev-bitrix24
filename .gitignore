@@ -21,7 +21,9 @@ upload/
 # 4. Logs, Dumps & Temporary Files
 *.log
 *.sql
+*.tar
 *.tar.gz
+*.tgz
 *.zip
 /tmp/
 /scratch/
