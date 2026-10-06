@@ -64,3 +64,5 @@ Mã nguồn được đồng bộ tự động lên máy chủ web (`/var/www/ht
    - Đồng bộ các tệp trong `local/` và `portal/` vào `/var/www/html/`.
    - Phân quyền tệp tin cho người dùng web (`bitrix:nginx`).
    - Xóa cache Bitrix và nạp lại tiến trình `php-fpm`.
+
+Tiến trình runner chạy bằng tài khoản chuyên dụng `actions-runner` và được giới hạn lệnh thực thi trong `sudoers`.
