@@ -1,6 +1,9 @@
 <?php
 require($_SERVER["DOCUMENT_ROOT"]."/bitrix/header.php");
 $APPLICATION->SetTitle("Cổng Thông Tin Dịch Vụ - Hãng Kiểm Toán AASC");
+
+global $USER;
+$isAuthorized = is_object($USER) && $USER->IsAuthorized();
 ?>
 
 <div style="max-width: 960px; margin: 0 auto; padding: 2rem 0;">
@@ -9,13 +12,22 @@ $APPLICATION->SetTitle("Cổng Thông Tin Dịch Vụ - Hãng Kiểm Toán AASC"
         <p style="font-size: 1.15rem; line-height: 1.6; margin: 0 0 2rem 0; color: #e2e8f0; max-width: 700px;">
             Đơn vị kiểm toán độc lập và tư vấn tài chính hàng đầu tại Việt Nam. Cung cấp dịch vụ kiểm toán Báo cáo tài chính, Quyết toán dự án đầu tư, Thẩm định giá tài sản và Tư vấn thuế chuyên nghiệp.
         </p>
-        <div style="display: flex; gap: 1rem;">
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
             <a href="/portal/services/" style="background: #ffffff; color: #1a365d; padding: 0.75rem 1.5rem; border-radius: 4px; font-weight: 600; text-decoration: none; font-size: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                 Danh Mục Dịch Vụ &rarr;
             </a>
             <a href="/portal/request/" style="background: #ed8936; color: #ffffff; padding: 0.75rem 1.5rem; border-radius: 4px; font-weight: 600; text-decoration: none; font-size: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                Gửi Yêu Cầu Báo Giá Test
+                Gửi Yêu Cầu Báo Giá
             </a>
+            <?php if ($isAuthorized): ?>
+                <a href="/portal/my-requests/" style="background: rgba(255,255,255,0.2); color: #ffffff; border: 1px solid rgba(255,255,255,0.4); padding: 0.75rem 1.5rem; border-radius: 4px; font-weight: 600; text-decoration: none; font-size: 1rem;">
+                    Hồ Sơ Của Tôi &rarr;
+                </a>
+            <?php else: ?>
+                <a href="/portal/auth/?mode=register" style="background: rgba(255,255,255,0.2); color: #ffffff; border: 1px solid rgba(255,255,255,0.4); padding: 0.75rem 1.5rem; border-radius: 4px; font-weight: 600; text-decoration: none; font-size: 1rem;">
+                    Đăng Ký Tài Khoản &rarr;
+                </a>
+            <?php endif; ?>
         </div>
     </div>
 

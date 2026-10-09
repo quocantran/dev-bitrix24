@@ -5,6 +5,11 @@ use Bitrix\Main\Page\Asset;
 use Bitrix\Main\Localization\Loc;
 
 Loc::loadMessages(__FILE__);
+
+global $USER;
+$isAuthorized = is_object($USER) && $USER->IsAuthorized();
+$userFullName = $isAuthorized ? ($USER->GetFormattedName() ?: $USER->GetLogin()) : '';
+$curPage = $APPLICATION->GetCurPage(false);
 ?>
 <!DOCTYPE html>
 <html lang="<?=LANGUAGE_ID?>">
@@ -30,21 +35,26 @@ Loc::loadMessages(__FILE__);
     <header class="site-header">
         <div class="header-inner">
             <div class="brand-logo">
-                <a href="<?=SITE_DIR?>">AASC AUDIT & CONSULTING</a>
+                <a href="/portal/">AASC AUDIT & CONSULTING</a>
             </div>
-            <div class="header-contacts">
-                <?php
-                // Vùng nhúng tĩnh cho số điện thoại hotline
-                $APPLICATION->IncludeComponent(
-                    "bitrix:main.include",
-                    "",
-                    [
-                        "AREA_FILE_SHOW" => "file",
-                        "PATH" => SITE_DIR . "include/hotline.php",
-                        "EDIT_TEMPLATE" => ""
-                    ]
-                );
-                ?>
+
+            <nav class="portal-main-nav">
+                <a href="/portal/" class="<?= $curPage === '/portal/' || $curPage === '/portal/index.php' ? 'active' : '' ?>">Trang Chủ</a>
+                <a href="/portal/services/" class="<?= strpos($curPage, '/portal/services/') === 0 ? 'active' : '' ?>">Dịch Vụ</a>
+                <a href="/portal/request/" class="<?= strpos($curPage, '/portal/request/') === 0 ? 'active' : '' ?>">Gửi Yêu Cầu</a>
+                <?php if ($isAuthorized): ?>
+                    <a href="/portal/my-requests/" class="<?= strpos($curPage, '/portal/my-requests/') === 0 ? 'active' : '' ?>">Hồ Sơ Của Tôi</a>
+                <?php endif; ?>
+            </nav>
+
+            <div class="header-user-controls">
+                <?php if ($isAuthorized): ?>
+                    <span class="user-greeting">Xin chào, <strong><?= htmlspecialcharsbx($userFullName) ?></strong></span>
+                    <a href="/portal/auth/?logout=yes" class="btn-auth-logout">Đăng Xuất</a>
+                <?php else: ?>
+                    <a href="/portal/auth/?mode=login" class="btn-auth-login">Đăng Nhập</a>
+                    <a href="/portal/auth/?mode=register" class="btn-auth-register">Đăng Ký</a>
+                <?php endif; ?>
             </div>
         </div>
     </header>

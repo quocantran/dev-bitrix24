@@ -12,7 +12,7 @@
 /vendor/
 vendor/
 
-# 3. Bitrix Core & Uploads (DO NOT COMMIT)
+# 3. Bitrix Core & Uploads
 /bitrix/
 bitrix/
 /upload/
@@ -36,3 +36,10 @@ scratch/
 *.swo
 .DS_Store
 Thumbs.db
+
+# 6. Multiagent & Workflow Files
+.agents/
+/.agents/
+PLAN_MULTIAGENT_AUTH.md
+PLAN.md
+*.plan.md

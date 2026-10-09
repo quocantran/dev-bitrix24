@@ -22,6 +22,9 @@ class AuditRequestTable extends DataManager
                 'primary' => true,
                 'autocomplete' => true,
             ]),
+            new IntegerField('USER_ID', [
+                'default_value' => 0,
+            ]),
             new StringField('COMPANY_NAME', [
                 'required' => true,
                 'validation' => function () {

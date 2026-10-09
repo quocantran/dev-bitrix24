@@ -1,9 +1,14 @@
 <?php
-$_SERVER["DOCUMENT_ROOT"] = "/var/www/html";
+if (empty($_SERVER["DOCUMENT_ROOT"]) || !file_exists($_SERVER["DOCUMENT_ROOT"] . "/bitrix/modules/main/include/prolog_before.php")) {
+    $_SERVER["DOCUMENT_ROOT"] = file_exists("/var/www/html/bitrix") ? "/var/www/html" : str_replace('\\', '/', realpath(__DIR__ . '/../../..'));
+}
 define("NO_KEEP_STATISTIC", true);
 define("NOT_CHECK_PERMISSIONS", true);
+define("BX_NO_ACCELERATOR_RESET", true);
+ob_start();
 
 require($_SERVER["DOCUMENT_ROOT"] . "/bitrix/modules/main/include/prolog_before.php");
+ob_end_clean();
 
 use Bitrix\Main\Loader;
 use Aasc\Audit\Model\AuditRequestTable;

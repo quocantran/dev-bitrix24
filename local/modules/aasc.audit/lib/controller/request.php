@@ -15,6 +15,7 @@ class Request extends Controller
         return [
             'send' => [
                 'prefilters' => [
+                    new ActionFilter\Authentication(),
                     new ActionFilter\Csrf(),
                     new ActionFilter\HttpMethod([ActionFilter\HttpMethod::METHOD_POST]),
                 ],
@@ -56,8 +57,12 @@ class Request extends Controller
             return null;
         }
 
+        global $USER;
+        $currentUserId = is_object($USER) && $USER->IsAuthorized() ? (int)$USER->GetID() : 0;
+
         // 2. Ghi bản ghi vào bảng D7 ORM
         $addResult = AuditRequestTable::add([
+            'USER_ID'        => $currentUserId,
             'COMPANY_NAME'   => $companyName,
             'TAX_CODE'       => $taxCode,
             'ANNUAL_REVENUE' => $revenue,

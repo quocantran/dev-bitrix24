@@ -172,6 +172,7 @@ class LeadApprovalHandler
                 // Fallback socket publish cho môi trường không có ext-redis (ví dụ Windows dev)
                 $fp = @fsockopen($redisHost, $redisPort, $errno, $errstr, 1.0);
                 if ($fp) {
+                    stream_set_timeout($fp, 1);
                     if (!empty($redisPass)) {
                         fwrite($fp, "*2\r\n$4\r\nAUTH\r\n$" . strlen($redisPass) . "\r\n$redisPass\r\n");
                         fgets($fp);
