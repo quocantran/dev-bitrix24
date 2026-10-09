@@ -71,6 +71,7 @@ $requests = AuditRequestTable::getList([
                             <th style="padding: 0.85rem 1rem;">Ngày gửi</th>
                             <th style="padding: 0.85rem 1rem;">Trạng thái xử lý</th>
                             <th style="padding: 0.85rem 1rem;">Mã CRM Lead</th>
+                            <th style="padding: 0.85rem 1rem; text-align: center;">Thao tác</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -119,6 +120,11 @@ $requests = AuditRequestTable::getList([
                                 </td>
                                 <td style="padding: 1rem; font-family: monospace; color: #4a5568;">
                                     <?= !empty($item['CRM_LEAD_ID']) ? '#' . (int)$item['CRM_LEAD_ID'] : 'Đang đồng bộ' ?>
+                                </td>
+                                <td style="padding: 1rem; text-align: center;">
+                                    <a href="/portal/my-requests/<?= (int)$item['ID'] ?>/" style="background: #2b6cb0; color: #ffffff; padding: 0.35rem 0.75rem; border-radius: 4px; font-size: 0.82rem; font-weight: 600; text-decoration: none; display: inline-block;">
+                                        Xem tiến độ &rarr;
+                                    </a>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

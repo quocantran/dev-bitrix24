@@ -20,6 +20,13 @@ class Request extends Controller
                     new ActionFilter\HttpMethod([ActionFilter\HttpMethod::METHOD_POST]),
                 ],
             ],
+            'addNote' => [
+                'prefilters' => [
+                    new ActionFilter\Authentication(),
+                    new ActionFilter\Csrf(),
+                    new ActionFilter\HttpMethod([ActionFilter\HttpMethod::METHOD_POST]),
+                ],
+            ],
         ];
     }
 
@@ -103,4 +110,90 @@ class Request extends Controller
             'message'   => 'Yêu cầu kiểm toán đã được tiếp nhận thành công. Trưởng phòng kiểm toán AASC sẽ liên hệ sớm nhất.',
         ];
     }
+
+    /**
+     * Action gửi phản hồi / ghi chú bổ sung vào CRM Lead Timeline
+     * URL: /bitrix/services/main/ajax.php?action=aasc:audit.controller.request.addNote
+     */
+    public function addNoteAction(int $requestId = 0, string $message = ''): ?array
+    {
+        if ($requestId <= 0) {
+            $post = $this->getRequest()->getPostList();
+            $requestId = (int)$post->get('requestId');
+            $message = (string)$post->get('message');
+        }
+
+        $message = trim($message);
+        if ($requestId <= 0 || empty($message)) {
+            $this->addError(new Error('Vui lòng nhập nội dung phản hồi hợp lệ.'));
+            return null;
+        }
+
+        $request = AuditRequestTable::getById($requestId)->fetch();
+        if (!$request) {
+            $this->addError(new Error('Không tìm thấy thông tin hồ sơ kiểm toán #' . $requestId));
+            return null;
+        }
+
+        global $USER;
+        $currentUserId = (int)$USER->GetID();
+        $isOwner = ((int)$request['USER_ID'] === $currentUserId);
+        $isInternal = \Aasc\Audit\Handler\PortalAccessHandler::isInternalUser($currentUserId);
+
+        if (!$isOwner && !$isInternal) {
+            $this->addError(new Error('Bạn không có quyền gửi phản hồi cho hồ sơ này.'));
+            return null;
+        }
+
+        $leadId = (int)($request['CRM_LEAD_ID'] ?? 0);
+        if ($leadId > 0 && \Bitrix\Main\Loader::includeModule('crm')) {
+            // Thêm ghi chú vào Timeline của Lead trong CRM
+            \Bitrix\Crm\Timeline\CommentEntry::create([
+                'TEXT'      => $message,
+                'AUTHOR_ID' => $currentUserId,
+                'BINDINGS'  => [
+                    [
+                        'ENTITY_TYPE_ID' => \CCrmOwnerType::Lead,
+                        'ENTITY_ID'      => $leadId,
+                    ]
+                ]
+            ]);
+
+            // Bắn thông báo nội bộ cho chuyên viên phụ trách nếu tác giả là khách hàng
+            if ($isOwner && \Bitrix\Main\Loader::includeModule('im')) {
+                $lead = \CCrmLead::GetByID($leadId, false);
+                $assignedId = (int)($lead['ASSIGNED_BY_ID'] ?? 1);
+                if ($assignedId > 0 && $assignedId !== $currentUserId) {
+                    \CIMNotify::Add([
+                        'TO_USER_ID'     => $assignedId,
+                        'FROM_USER_ID'   => $currentUserId,
+                        'NOTIFY_TYPE'    => IM_NOTIFY_SYSTEM,
+                        'NOTIFY_MODULE'  => 'aasc.audit',
+                        'NOTIFY_TAG'     => 'AASC|NOTE|' . $requestId,
+                        'NOTIFY_MESSAGE' => 'Khách hàng vừa gửi ghi chú mới cho hồ sơ #' . $requestId . ' (' . ($request['COMPANY_NAME'] ?? '') . '): ' . $message,
+                    ]);
+                }
+            }
+        }
+
+        // Đẩy thông báo thời gian thực qua Push & Pull
+        if (\Bitrix\Main\Loader::includeModule('pull')) {
+            \CPullWatch::AddToStack('AASC_AUDIT_REQUEST_' . $requestId, [
+                'module_id' => 'aasc.audit',
+                'command'   => 'new_request_note',
+                'params'    => [
+                    'requestId'  => $requestId,
+                    'authorName' => $USER->GetFullName() ?: $USER->GetLogin(),
+                    'message'    => htmlspecialcharsbx($message),
+                    'time'       => date('H:i d/m/Y'),
+                ]
+            ]);
+        }
+
+        return [
+            'status'  => 'success',
+            'message' => 'Đã gửi phản hồi thành công.',
+        ];
+    }
 }
+

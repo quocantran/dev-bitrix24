@@ -51,6 +51,13 @@ $eventManager->addEventHandler(
     ['\Aasc\Audit\Handler\LeadApprovalHandler', 'onAfterLeadAdd']
 );
 
+// Đẩy cập nhật tiến độ thời gian thực khi trạng thái Lead thay đổi
+$eventManager->addEventHandler(
+    'crm',
+    'OnAfterCrmLeadUpdate',
+    ['\Aasc\Audit\Handler\LeadApprovalHandler', 'onAfterLeadUpdate']
+);
+
 // Cách ly tài khoản Khách hàng Portal khỏi mạng nội bộ Intranet
 $eventManager->addEventHandler(
     'main',

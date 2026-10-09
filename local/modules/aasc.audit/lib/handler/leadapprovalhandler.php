@@ -199,4 +199,63 @@ class LeadApprovalHandler
             ]);
         }
     }
+
+    /**
+     * Bắt sự kiện OnAfterCrmLeadUpdate: Phát sóng cập nhật trạng thái thời gian thực qua WebSocket
+     */
+    public static function onAfterLeadUpdate(&$arFields): void
+    {
+        $leadId = (int)($arFields['ID'] ?? 0);
+        if ($leadId <= 0) {
+            return;
+        }
+
+        // Kiểm tra xem Lead này có liên kết với yêu cầu kiểm toán nào trong aasc_audit_request không
+        $auditRequest = \Aasc\Audit\Model\AuditRequestTable::getList([
+            'filter' => ['=CRM_LEAD_ID' => $leadId],
+            'select' => ['ID', 'USER_ID', 'STATUS'],
+        ])->fetch();
+
+        if (!$auditRequest) {
+            return;
+        }
+
+        $requestId = (int)$auditRequest['ID'];
+        $leadStatusId = (string)($arFields['STATUS_ID'] ?? '');
+
+        if (empty($leadStatusId) && Loader::includeModule('crm')) {
+            $lead = \CCrmLead::GetByID($leadId, false);
+            $leadStatusId = (string)($lead['STATUS_ID'] ?? 'NEW');
+        }
+
+        // Tính bước tiến trình hiện tại (1 -> 4)
+        $currentStep = 1;
+        if (in_array($leadStatusId, ['IN_PROCESS', 'ASSIGNED', '2'])) {
+            $currentStep = 2;
+        } elseif (in_array($leadStatusId, ['PROPOSAL_SENT', 'APPROVED', 'PROCESSED', '3'])) {
+            $currentStep = 3;
+        } elseif (in_array($leadStatusId, ['CONVERTED', 'WON', 'COMPLETED', '4'])) {
+            $currentStep = 4;
+        }
+
+        // Cập nhật lại cột STATUS trong bảng aasc_audit_request nếu cần
+        \Aasc\Audit\Model\AuditRequestTable::update($requestId, [
+            'STATUS' => $leadStatusId,
+        ]);
+
+        // Đẩy sự kiện qua Push & Pull để giao diện Stepper của khách hàng cập nhật trực tiếp
+        if (Loader::includeModule('pull')) {
+            \CPullWatch::AddToStack('AASC_AUDIT_REQUEST_' . $requestId, [
+                'module_id' => 'aasc.audit',
+                'command'   => 'request_status_updated',
+                'params'    => [
+                    'requestId' => $requestId,
+                    'leadId'    => $leadId,
+                    'statusId'  => $leadStatusId,
+                    'stepIndex' => $currentStep,
+                ]
+            ]);
+        }
+    }
 }
+
