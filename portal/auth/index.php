@@ -190,10 +190,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 alertBox.style.display = 'block';
                 alertBox.style.background = '#c6f6d5';
                 alertBox.style.color = '#22543d';
-                alertBox.style.border = '1px solid #9ae6b4';
+                var redirectTarget = (data.data && data.data.redirectUrl) ? data.data.redirectUrl : targetUrl;
                 alertBox.innerHTML = '<strong>Đăng nhập thành công!</strong> Đang chuyển hướng...';
                 setTimeout(function() {
-                    window.location.href = targetUrl;
+                    window.location.href = redirectTarget;
                 }, 600);
             } else {
                 var msg = 'Đăng nhập không thành công.';

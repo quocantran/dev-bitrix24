@@ -49,6 +49,9 @@ $curPage = $APPLICATION->GetCurPage(false);
 
             <div class="header-user-controls">
                 <?php if ($isAuthorized): ?>
+                    <?php if (class_exists('\Aasc\Audit\Handler\PortalAccessHandler') && \Aasc\Audit\Handler\PortalAccessHandler::isInternalUser()): ?>
+                        <a href="/stream/" class="btn-intranet-link" title="Chuyển sang Mạng nội bộ / CRM">Vào Intranet &rarr;</a>
+                    <?php endif; ?>
                     <span class="user-greeting">Xin chào, <strong><?= htmlspecialcharsbx($userFullName) ?></strong></span>
                     <a href="/portal/auth/?logout=yes" class="btn-auth-logout">Đăng Xuất</a>
                 <?php else: ?>

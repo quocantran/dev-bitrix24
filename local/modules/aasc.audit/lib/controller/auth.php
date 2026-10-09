@@ -81,13 +81,22 @@ class Auth extends Controller
         $authResult = $USER->Login($login, $password, $remember === 'Y' ? 'Y' : 'N');
 
         if ($authResult === true || (is_array($authResult) && ($authResult['TYPE'] ?? '') === 'OK')) {
+            $isInternal = \Aasc\Audit\Handler\PortalAccessHandler::isInternalUser((int)$USER->GetID());
+            $backUrl = (string)$this->getRequest()->getPost('backurl');
+            if (empty($backUrl) || !preg_match('#^/portal/#', $backUrl)) {
+                $backUrl = '/portal/request/';
+            }
+            $redirectUrl = $isInternal ? '/stream/' : $backUrl;
+
             return [
-                'status'   => 'success',
-                'userId'   => (int)$USER->GetID(),
-                'login'    => $USER->GetLogin(),
-                'fullName' => $USER->GetFullName() ?: $USER->GetLogin(),
-                'email'    => $USER->GetEmail(),
-                'message'  => 'Đăng nhập thành công.',
+                'status'      => 'success',
+                'userId'      => (int)$USER->GetID(),
+                'login'       => $USER->GetLogin(),
+                'fullName'    => $USER->GetFullName() ?: $USER->GetLogin(),
+                'email'       => $USER->GetEmail(),
+                'isInternal'  => $isInternal,
+                'redirectUrl' => $redirectUrl,
+                'message'     => 'Đăng nhập thành công.',
             ];
         }
 
@@ -244,6 +253,7 @@ class Auth extends Controller
             'login'      => $isAuth ? $USER->GetLogin() : null,
             'fullName'   => $isAuth ? ($USER->GetFullName() ?: $USER->GetLogin()) : null,
             'email'      => $isAuth ? $USER->GetEmail() : null,
+            'isInternal' => $isAuth ? \Aasc\Audit\Handler\PortalAccessHandler::isInternalUser() : false,
         ];
     }
 }
