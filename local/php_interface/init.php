@@ -50,3 +50,10 @@ $eventManager->addEventHandler(
     'OnAfterCrmLeadAdd',
     ['\Aasc\Audit\Handler\LeadApprovalHandler', 'onAfterLeadAdd']
 );
+
+// Cách ly tài khoản Khách hàng Portal khỏi mạng nội bộ Intranet
+$eventManager->addEventHandler(
+    'main',
+    'OnBeforeProlog',
+    ['\Aasc\Audit\Handler\PortalAccessHandler', 'onBeforeProlog']
+);
