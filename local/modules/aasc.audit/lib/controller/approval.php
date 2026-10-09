@@ -102,7 +102,10 @@ class Approval extends Controller
             } else {
                 // Khách thông thường (< 50 tỷ): Duyệt xong là hoàn tất
                 $enumId = $this->getStatusEnumId('APPROVED');
-                $updateApproved = ['UF_APPROVAL_STATUS' => $enumId];
+                $updateApproved = [
+                    'UF_APPROVAL_STATUS' => $enumId,
+                    'STATUS_ID'          => 'PROPOSAL_SENT',
+                ];
                 $leadObj->Update($leadId, $updateApproved);
 
                 \CIMNotify::Add([
@@ -124,7 +127,10 @@ class Approval extends Controller
         // Trường hợp 3: Ban Giám đốc (director) duyệt
         if ($currentUserLogin === 'director' || $currentUserId === 4 || $currentUserId === 1) {
             $enumId = $this->getStatusEnumId('APPROVED');
-            $updateFinal = ['UF_APPROVAL_STATUS' => $enumId];
+            $updateFinal = [
+                'UF_APPROVAL_STATUS' => $enumId,
+                'STATUS_ID'          => 'PROPOSAL_SENT',
+            ];
             $leadObj->Update($leadId, $updateFinal);
 
             \CIMNotify::Add([

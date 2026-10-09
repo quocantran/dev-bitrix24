@@ -14,8 +14,8 @@ $lead = $arResult['LEAD'];
 $comments = $arResult['TIMELINE_COMMENTS'] ?? [];
 $requestId = (int)$request['ID'];
 
-// Tính tỷ lệ % hoàn thành thanh tiến độ (0%, 33%, 66%, 100%)
-$progressPercent = min(100, max(0, round(($currentStep - 1) / 3 * 100)));
+// Tính tỷ lệ % hoàn thành thanh tiến độ 6 bước (0%, 20%, 40%, 60%, 80%, 100%)
+$progressPercent = min(100, max(0, round(($currentStep - 1) / 5 * 100)));
 ?>
 <div class="audit-detail-wrapper" id="auditDetailApp" data-request-id="<?=$requestId?>">
     <!-- Nút điều hướng quay lại -->
@@ -38,10 +38,10 @@ $progressPercent = min(100, max(0, round(($currentStep - 1) / 3 * 100)));
         </div>
     </div>
 
-    <!-- Khung Stepper Timeline Tiến Độ Xử Lý Thời Gian Thực -->
+    <!-- Khung Stepper Timeline Tiến Độ Xử Lý Thời Gian Thực (6 Bước Chuẩn VSA) -->
     <div class="detail-stepper-card">
         <div class="stepper-card-header">
-            <h3>Tiến Độ Xử Lý Hồ Sơ Kiểm Toán</h3>
+            <h3>Tiến Độ Quy Trình Kiểm Toán Chuẩn VSA</h3>
             <span class="stepper-live-badge" id="liveStatusBadge">
                 <span class="pulse-indicator"></span> Đang đồng bộ thời gian thực
             </span>
@@ -77,6 +77,43 @@ $progressPercent = min(100, max(0, round(($currentStep - 1) / 3 * 100)));
         </div>
     </div>
 
+    <?php if (!empty($arResult['HAS_FINAL_REPORT'])): ?>
+        <!-- Khung bàn giao Báo cáo kiểm toán chính thức khi hoàn tất bước 6 -->
+        <div class="report-delivery-card">
+            <div class="report-delivery-icon">&#9989;</div>
+            <div class="report-delivery-info">
+                <div class="report-delivery-badge">Phát hành Báo cáo kiểm toán chính thức</div>
+                <h3 class="report-delivery-title">Báo Cáo Kiểm Toán Độc Lập Số <?=$requestId?>/2026/BCKT-AASC</h3>
+                <p class="report-delivery-desc">
+                    Cuộc kiểm toán đã hoàn tất kiểm toán thực địa và thủ tục kiểm soát chất lượng độc lập (EQCR). Báo cáo kiểm toán độc lập theo Chuẩn mực Kiểm toán Việt Nam số 700 (VSA 700) đã được Ban Giám đốc Hãng Kiểm toán AASC ký phát hành chính thức.
+                </p>
+                <div class="report-delivery-action">
+                    <a href="<?=$arResult['REPORT_URL']?>" target="_blank" class="btn-download-report">
+                        Xem & Tải Báo Cáo Kiểm Toán Độc Lập (PDF / In) &rarr;
+                    </a>
+                </div>
+            </div>
+        </div>
+    <?php elseif (!empty($arResult['CAN_SIGN_CONTRACT'])): ?>
+        <!-- Khung chấp thuận báo giá & Ký hợp đồng cho khách hàng -->
+        <div class="quotation-card" id="quotationActionCard">
+            <div class="quotation-icon">&#128221;</div>
+            <div class="quotation-info">
+                <div class="quotation-badge">Dự toán phí dịch vụ đã được phê duyệt</div>
+                <h3 class="quotation-title">Dự toán phí kiểm toán: <?=number_format($arResult['ESTIMATED_FEE'])?> VNĐ</h3>
+                <p class="quotation-desc">
+                    Phương án kiểm toán và biểu phí dịch vụ đã được phê duyệt bởi Trưởng phòng/Ban Giám đốc AASC. Quý khách vui lòng xác nhận chấp thuận để chính thức ký kết hợp đồng và khởi tạo đoàn kiểm toán thực địa.
+                </p>
+                <div class="quotation-action">
+                    <button type="button" id="btnSignContract" class="btn-sign-contract">
+                        Chấp thuận & Ký hợp đồng dịch vụ kiểm toán &rarr;
+                    </button>
+                    <span id="signContractStatus" class="sign-status-text"></span>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
+
     <!-- Lưới thông tin chi tiết và Timeline trao đổi -->
     <div class="detail-columns-grid">
         <!-- Cột trái: Thông tin hợp đồng & hồ sơ -->
@@ -91,6 +128,12 @@ $progressPercent = min(100, max(0, round(($currentStep - 1) / 3 * 100)));
                     <span class="info-label">Quy mô doanh thu:</span>
                     <span class="info-value font-medium"><?=htmlspecialcharsbx($request['REVENUE_SCALE'] ?: 'Chưa cung cấp')?></span>
                 </div>
+                <?php if ($arResult['ESTIMATED_FEE'] > 0): ?>
+                    <div class="info-row">
+                        <span class="info-label">Phí dịch vụ:</span>
+                        <span class="info-value text-primary font-bold"><?=number_format($arResult['ESTIMATED_FEE'])?> VNĐ</span>
+                    </div>
+                <?php endif; ?>
                 <div class="info-row">
                     <span class="info-label">Người liên hệ:</span>
                     <span class="info-value"><?=htmlspecialcharsbx($request['CONTACT_NAME'] ?: 'Đại diện doanh nghiệp')?></span>
@@ -107,6 +150,12 @@ $progressPercent = min(100, max(0, round(($currentStep - 1) / 3 * 100)));
                     <span class="info-label">Mã Lead CRM:</span>
                     <span class="info-value font-mono">#<?=htmlspecialcharsbx($request['CRM_LEAD_ID'])?></span>
                 </div>
+                <?php if (!empty($request['CRM_DEAL_ID']) && (int)$request['CRM_DEAL_ID'] > 0): ?>
+                    <div class="info-row">
+                        <span class="info-label">Mã Hợp đồng (Deal):</span>
+                        <span class="info-value font-mono text-primary font-bold">#<?=htmlspecialcharsbx($request['CRM_DEAL_ID'])?></span>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -224,7 +273,58 @@ document.addEventListener('DOMContentLoaded', function() {
         timelineStream.scrollTop = timelineStream.scrollHeight;
     }
 
-    // 2. Tích hợp Bitrix Push & Pull thời gian thực qua WebSocket
+    // 2. Xử lý ký hợp đồng dịch vụ kiểm toán
+    const btnSign = document.getElementById('btnSignContract');
+    if (btnSign) {
+        btnSign.addEventListener('click', function() {
+            if (!confirm('Bạn có chắc chắn muốn xác nhận chấp thuận dự toán phí và chính thức ký kết hợp đồng dịch vụ kiểm toán?')) {
+                return;
+            }
+
+            btnSign.disabled = true;
+            const signStatus = document.getElementById('signContractStatus');
+            if (signStatus) {
+                signStatus.textContent = 'Đang tiến hành ký kết hợp đồng...';
+                signStatus.style.color = '#4a5568';
+            }
+
+            const fd = new FormData();
+            fd.append('requestId', requestId);
+            fd.append('sessid', BX.bitrix_sessid());
+
+            fetch('/bitrix/services/main/ajax.php?action=aasc:audit.controller.request.signContract', {
+                method: 'POST',
+                body: fd
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    if (signStatus) {
+                        signStatus.textContent = 'Ký hợp đồng thành công! Đang tải lại...';
+                        signStatus.style.color = '#38a169';
+                    }
+                    updateStepperUI(3);
+                    setTimeout(() => { window.location.reload(); }, 1500);
+                } else {
+                    btnSign.disabled = false;
+                    const err = (res.errors && res.errors[0]) ? res.errors[0].message : 'Có lỗi khi ký kết hợp đồng.';
+                    if (signStatus) {
+                        signStatus.textContent = err;
+                        signStatus.style.color = '#e53e3e';
+                    }
+                }
+            })
+            .catch(() => {
+                btnSign.disabled = false;
+                if (signStatus) {
+                    signStatus.textContent = 'Lỗi kết nối máy chủ.';
+                    signStatus.style.color = '#e53e3e';
+                }
+            });
+        });
+    }
+
+    // 3. Tích hợp Bitrix Push & Pull thời gian thực qua WebSocket
     if (typeof BX !== 'undefined' && BX.PULL) {
         // Đăng ký mở rộng kênh theo dõi hồ sơ này
         BX.PULL.extendWatch('AASC_AUDIT_REQUEST_' + requestId);
@@ -234,11 +334,14 @@ document.addEventListener('DOMContentLoaded', function() {
             callback: function(data) {
                 if (!data || !data.params) return;
 
-                // Trường hợp 1: Nhận sự kiện chuyển bước trạng thái CRM Lead
+                // Trường hợp 1: Nhận sự kiện chuyển bước trạng thái kiểm toán
                 if (data.command === 'request_status_updated' && parseInt(data.params.requestId) === requestId) {
                     const newStep = parseInt(data.params.stepIndex);
-                    if (newStep >= 1 && newStep <= 4) {
+                    if (newStep >= 1 && newStep <= 6) {
                         updateStepperUI(newStep);
+                        if (newStep === 3 || newStep === 6) {
+                            setTimeout(() => { window.location.reload(); }, 1200);
+                        }
                     }
                 }
 
@@ -254,15 +357,15 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Cập nhật giao diện thanh Stepper khi nhận WebSocket
+    // Cập nhật giao diện thanh Stepper khi nhận WebSocket (6 bước)
     function updateStepperUI(currentStep) {
-        const percent = Math.min(100, Math.max(0, Math.round((currentStep - 1) / 3 * 100)));
+        const percent = Math.min(100, Math.max(0, Math.round((currentStep - 1) / 5 * 100)));
         const progressBar = document.getElementById('stepperProgressBar');
         if (progressBar) {
             progressBar.style.width = percent + '%';
         }
 
-        for (let i = 1; i <= 4; i++) {
+        for (let i = 1; i <= 6; i++) {
             const stepItem = document.getElementById('stepItem' + i);
             if (!stepItem) continue;
 

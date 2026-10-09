@@ -64,6 +64,9 @@ class AuditRequestTable extends DataManager
             new IntegerField('CRM_LEAD_ID', [
                 'default_value' => 0,
             ]),
+            new IntegerField('CRM_DEAL_ID', [
+                'default_value' => 0,
+            ]),
             new DatetimeField('CREATED_AT', [
                 'required' => true,
             ]),

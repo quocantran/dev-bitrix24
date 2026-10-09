@@ -12,6 +12,82 @@ class LeadApprovalHandler
      */
     public static function onBeforeDealUpdate(&$arFields): bool
     {
+        $dealId = (int)($arFields["ID"] ?? 0);
+        if ($dealId <= 0) {
+            return true;
+        }
+
+        // Lấy thông tin Deal hiện tại
+        $deal = \CCrmDeal::GetByID($dealId, false);
+        if (!$deal) {
+            return true;
+        }
+
+        $newStageId = (string)($arFields["STAGE_ID"] ?? '');
+        $currentStageId = (string)($deal["STAGE_ID"] ?? '');
+
+        // Nếu không đổi sang stage mới (đã ở stage đó rồi) thì bỏ qua
+        if (empty($newStageId) || $currentStageId === $newStageId) {
+            return true;
+        }
+
+        $categoryId = (int)($deal["CATEGORY_ID"] ?? 0);
+
+        // 1. Kiểm soát phân quyền cho Deal thuộc Category 1: Quy trình Kiểm toán AASC
+        if ($categoryId === 1 || strpos($newStageId, 'C1:') === 0) {
+            global $USER;
+            $currentUserId = (int)($USER ? $USER->GetID() : 0);
+            $userLogin = $USER ? (string)$USER->GetLogin() : '';
+            $isAdmin = ($currentUserId === 1 || ($USER && $USER->IsAdmin()));
+
+            // Giai đoạn C1:FIELDWORK (Kiểm toán thực địa): Cần Trưởng nhóm (Senior) hoặc cấp trên phê duyệt kế hoạch
+            if ($newStageId === 'C1:FIELDWORK') {
+                if (!$isAdmin && !in_array($userLogin, ['senior', 'manager', 'director'], true)) {
+                    $msg = "Lỗi phân quyền AASC: Chỉ Trưởng nhóm kiểm toán (Senior) hoặc cấp quản lý mới có quyền phê duyệt kế hoạch để chuyển sang Kiểm toán thực địa.";
+                    $arFields["RESULT_MESSAGE"] = $msg;
+                    global $APPLICATION;
+                    $APPLICATION->ThrowException($msg);
+                    return false;
+                }
+            }
+
+            // Giai đoạn C1:REVIEW_MANAGER (Soát xét chủ nhiệm): Cần Trưởng nhóm (Senior) soát xét cấp 1 xong mới chuyển
+            if ($newStageId === 'C1:REVIEW_MANAGER') {
+                if (!$isAdmin && !in_array($userLogin, ['senior', 'manager', 'director'], true)) {
+                    $msg = "Lỗi phân quyền AASC: Chỉ Trưởng nhóm kiểm toán (Senior) sau khi soát xét cấp 1 mới được chuyển hồ sơ cho Chủ nhiệm kiểm toán (Manager).";
+                    $arFields["RESULT_MESSAGE"] = $msg;
+                    global $APPLICATION;
+                    $APPLICATION->ThrowException($msg);
+                    return false;
+                }
+            }
+
+            // Giai đoạn C1:REVIEW_DIRECTOR (Phê duyệt Ban Giám đốc): Cần Chủ nhiệm (Manager) soát xét cấp 2 xong mới chuyển
+            if ($newStageId === 'C1:REVIEW_DIRECTOR') {
+                if (!$isAdmin && !in_array($userLogin, ['manager', 'director'], true)) {
+                    $msg = "Lỗi phân quyền AASC: Chỉ Chủ nhiệm kiểm toán (Manager) mới có quyền trình hồ sơ lên Ban Giám đốc (Director) phê duyệt.";
+                    $arFields["RESULT_MESSAGE"] = $msg;
+                    global $APPLICATION;
+                    $APPLICATION->ThrowException($msg);
+                    return false;
+                }
+            }
+
+            // Giai đoạn C1:WON (Phát hành Báo cáo chính thức): Chỉ Ban Giám đốc (Director) được phép phê duyệt
+            if ($newStageId === 'C1:WON') {
+                if (!$isAdmin && $userLogin !== 'director') {
+                    $msg = "Lỗi phân quyền AASC: Chỉ Ban Giám đốc (Director) mới có thẩm quyền ký và phát hành Báo cáo kiểm toán chính thức (VSA 700).";
+                    $arFields["RESULT_MESSAGE"] = $msg;
+                    global $APPLICATION;
+                    $APPLICATION->ThrowException($msg);
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // 2. Kiểm soát cho Deal Category 0 (General) liên kết từ Lead
         $restrictedStages = [
             "PREPAYMENT_INVOICE", // Invoice (Hóa đơn / Gửi báo giá)
             "EXECUTING",          // In progress (Tiến hành kiểm toán)
@@ -19,23 +95,7 @@ class LeadApprovalHandler
             "WON"                 // Deal won (Thành công)
         ];
 
-        if (isset($arFields["STAGE_ID"]) && in_array($arFields["STAGE_ID"], $restrictedStages, true)) {
-            $dealId = (int)($arFields["ID"] ?? 0);
-            if ($dealId <= 0) {
-                return true;
-            }
-
-            // Lấy thông tin Deal hiện tại
-            $deal = \CCrmDeal::GetByID($dealId, false);
-            if (!$deal) {
-                return true;
-            }
-
-            // Nếu không đổi sang stage mới (đã ở stage đó rồi) thì bỏ qua
-            if (isset($deal["STAGE_ID"]) && $deal["STAGE_ID"] === $arFields["STAGE_ID"]) {
-                return true;
-            }
-
+        if (in_array($newStageId, $restrictedStages, true)) {
             // Tra cứu Lead gốc của Deal này
             $leadId = (int)($deal["LEAD_ID"] ?? 0);
             $xmlId = "";
@@ -228,14 +288,14 @@ class LeadApprovalHandler
             $leadStatusId = (string)($lead['STATUS_ID'] ?? 'NEW');
         }
 
-        // Tính bước tiến trình hiện tại (1 -> 4)
+        // Tính bước tiến trình hiện tại (1 -> 6)
         $currentStep = 1;
         if (in_array($leadStatusId, ['IN_PROCESS', 'ASSIGNED', '2'])) {
             $currentStep = 2;
         } elseif (in_array($leadStatusId, ['PROPOSAL_SENT', 'APPROVED', 'PROCESSED', '3'])) {
-            $currentStep = 3;
+            $currentStep = 2;
         } elseif (in_array($leadStatusId, ['CONVERTED', 'WON', 'COMPLETED', '4'])) {
-            $currentStep = 4;
+            $currentStep = 3;
         }
 
         // Cập nhật lại cột STATUS trong bảng aasc_audit_request nếu cần
@@ -253,6 +313,126 @@ class LeadApprovalHandler
                     'leadId'    => $leadId,
                     'statusId'  => $leadStatusId,
                     'stepIndex' => $currentStep,
+                ]
+            ]);
+        }
+    }
+
+    /**
+     * Bắt sự kiện OnAfterCrmDealUpdate: Đồng bộ tiến độ kiểm toán Deal và phát sóng Push & Pull
+     */
+    public static function onAfterDealUpdate(&$arFields): void
+    {
+        $dealId = (int)($arFields['ID'] ?? 0);
+        if ($dealId <= 0) {
+            return;
+        }
+
+        if (!Loader::includeModule('crm')) {
+            return;
+        }
+
+        $deal = \CCrmDeal::GetByID($dealId, false);
+        if (!$deal) {
+            return;
+        }
+
+        $stageId = (string)($deal['STAGE_ID'] ?? '');
+        $leadId = (int)($deal['LEAD_ID'] ?? 0);
+
+        // Tìm kiếm hồ sơ yêu cầu kiểm toán tương ứng
+        $auditRequest = \Aasc\Audit\Model\AuditRequestTable::getList([
+            'filter' => [
+                'LOGIC' => 'OR',
+                ['=CRM_DEAL_ID' => $dealId],
+                ['=CRM_LEAD_ID' => $leadId],
+            ],
+            'select' => ['ID', 'USER_ID', 'STATUS', 'COMPANY_NAME'],
+        ])->fetch();
+
+        if (!$auditRequest) {
+            return;
+        }
+
+        $requestId = (int)$auditRequest['ID'];
+
+        // Map 6 bước tiến trình theo chuẩn VSA:
+        // 1: Tiếp nhận đơn
+        // 2: Thẩm định & Báo giá
+        // 3: Ký hợp đồng & Lập kế hoạch (C1:NEW, C1:PREPARATION)
+        // 4: Kiểm toán thực địa (C1:FIELDWORK)
+        // 5: Soát xét báo cáo (C1:REVIEW_MANAGER, C1:REVIEW_DIRECTOR)
+        // 6: Phát hành Báo cáo chính thức (C1:WON)
+        $stepIndex = 3;
+        if ($stageId === 'C1:FIELDWORK') {
+            $stepIndex = 4;
+        } elseif (in_array($stageId, ['C1:REVIEW_MANAGER', 'C1:REVIEW_DIRECTOR'], true)) {
+            $stepIndex = 5;
+        } elseif ($stageId === 'C1:WON') {
+            $stepIndex = 6;
+        }
+
+        // Cập nhật lại cột STATUS và CRM_DEAL_ID trong bảng aasc_audit_request
+        \Aasc\Audit\Model\AuditRequestTable::update($requestId, [
+            'CRM_DEAL_ID' => $dealId,
+            'STATUS'      => $stageId,
+        ]);
+
+        // Gửi thông báo chuông nội bộ theo từng chặng
+        if (Loader::includeModule('im')) {
+            global $USER;
+            $currentUid = (int)($USER ? $USER->GetID() : 0);
+            $targetUser = null;
+            $notifyMsg = '';
+
+            if ($stageId === 'C1:FIELDWORK') {
+                $junior = UserTable::getList(['filter' => ['=LOGIN' => 'junior', '=ACTIVE' => 'Y'], 'select' => ['ID']])->fetch();
+                if ($junior) {
+                    $targetUser = (int)$junior['ID'];
+                    $notifyMsg = 'Hồ sơ kiểm toán #' . $requestId . ' (' . ($auditRequest['COMPANY_NAME'] ?? '') . ') đã hoàn tất lập kế hoạch. Mời Trợ lý kiểm toán bắt đầu thực hiện kiểm toán thực địa.';
+                }
+            } elseif ($stageId === 'C1:REVIEW_MANAGER') {
+                $mgr = UserTable::getList(['filter' => ['=LOGIN' => 'manager', '=ACTIVE' => 'Y'], 'select' => ['ID']])->fetch();
+                if ($mgr) {
+                    $targetUser = (int)$mgr['ID'];
+                    $notifyMsg = 'Trưởng nhóm đã hoàn thành soát xét cấp 1 cho hồ sơ #' . $requestId . '. Mời Chủ nhiệm kiểm toán soát xét cấp 2.';
+                }
+            } elseif ($stageId === 'C1:REVIEW_DIRECTOR') {
+                $dir = UserTable::getList(['filter' => ['=LOGIN' => 'director', '=ACTIVE' => 'Y'], 'select' => ['ID']])->fetch();
+                if ($dir) {
+                    $targetUser = (int)$dir['ID'];
+                    $notifyMsg = 'Chủ nhiệm đã trình hồ sơ #' . $requestId . ' lên Ban Giám đốc để soát xét kiểm soát chất lượng (EQCR).';
+                }
+            } elseif ($stageId === 'C1:WON') {
+                $clientId = (int)$auditRequest['USER_ID'];
+                if ($clientId > 0) {
+                    $targetUser = $clientId;
+                    $notifyMsg = 'Báo cáo kiểm toán chính thức cho hồ sơ #' . $requestId . ' đã được ký phát hành! Bạn có thể tải báo cáo từ Cổng thông tin.';
+                }
+            }
+
+            if ($targetUser && !empty($notifyMsg)) {
+                \CIMNotify::Add([
+                    'TO_USER_ID'     => $targetUser,
+                    'FROM_USER_ID'   => $currentUid > 0 ? $currentUid : 0,
+                    'NOTIFY_TYPE'    => IM_NOTIFY_SYSTEM,
+                    'NOTIFY_MODULE'  => 'aasc.audit',
+                    'NOTIFY_TAG'     => 'AASC|DEAL_STAGE|' . $dealId,
+                    'NOTIFY_MESSAGE' => $notifyMsg,
+                ]);
+            }
+        }
+
+        // Đẩy sự kiện qua Push & Pull
+        if (Loader::includeModule('pull')) {
+            \CPullWatch::AddToStack('AASC_AUDIT_REQUEST_' . $requestId, [
+                'module_id' => 'aasc.audit',
+                'command'   => 'request_status_updated',
+                'params'    => [
+                    'requestId' => $requestId,
+                    'dealId'    => $dealId,
+                    'statusId'  => $stageId,
+                    'stepIndex' => $stepIndex,
                 ]
             ]);
         }

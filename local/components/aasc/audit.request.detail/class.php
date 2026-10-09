@@ -11,28 +11,38 @@ Loc::loadMessages(__FILE__);
 class AascAuditRequestDetailComponent extends \CBitrixComponent
 {
     /**
-     * Danh sách 4 bước tiến trình kiểm toán chuẩn AASC
+     * Danh sách 6 bước tiến trình kiểm toán chuẩn VSA tại AASC
      */
     public const WORKFLOW_STEPS = [
         1 => [
             'CODE'  => 'NEW',
-            'TITLE' => 'Tiếp nhận hồ sơ',
+            'TITLE' => 'Tiếp nhận đơn',
             'DESC'  => 'Hồ sơ đã được gửi và chuyển vào hệ thống CRM tiếp nhận ban đầu.',
         ],
         2 => [
-            'CODE'  => 'IN_PROCESS',
-            'TITLE' => 'Thẩm định & Khảo sát',
-            'DESC'  => 'Chuyên viên kiểm toán đang đánh giá hồ sơ và khảo sát quy mô doanh nghiệp.',
+            'CODE'  => 'PROPOSAL',
+            'TITLE' => 'Thẩm định & Báo giá',
+            'DESC'  => 'Chủ nhiệm kiểm toán thẩm định quy mô và lập dự toán chi phí dịch vụ.',
         ],
         3 => [
-            'CODE'  => 'PROPOSAL',
-            'TITLE' => 'Phương án & Báo giá',
-            'DESC'  => 'Lập dự toán chi phí kiểm toán và trình phê duyệt kế hoạch dịch vụ.',
+            'CODE'  => 'CONTRACT',
+            'TITLE' => 'Ký kết hợp đồng',
+            'DESC'  => 'Hợp đồng kiểm toán được xác lập, Trưởng nhóm tiến hành lập kế hoạch (VSA 300).',
         ],
         4 => [
-            'CODE'  => 'CONTRACT',
-            'TITLE' => 'Hợp đồng & Triển khai',
-            'DESC'  => 'Hợp đồng dịch vụ kiểm toán đã được ký kết, sẵn sàng triển khai thực tế.',
+            'CODE'  => 'FIELDWORK',
+            'TITLE' => 'Kiểm toán thực địa',
+            'DESC'  => 'Trợ lý và Trưởng nhóm kiểm toán thực hiện kiểm tra chi tiết tại doanh nghiệp (VSA 500).',
+        ],
+        5 => [
+            'CODE'  => 'REVIEW',
+            'TITLE' => 'Soát xét báo cáo',
+            'DESC'  => 'Chủ nhiệm và Ban Giám đốc soát xét hồ sơ kiểm soát chất lượng độc lập (EQCR).',
+        ],
+        6 => [
+            'CODE'  => 'COMPLETED',
+            'TITLE' => 'Báo cáo chính thức',
+            'DESC'  => 'Ban Giám đốc ký phát hành Báo cáo kiểm toán độc lập chính thức (VSA 700).',
         ],
     ];
 
@@ -84,50 +94,109 @@ class AascAuditRequestDetailComponent extends \CBitrixComponent
         $this->arResult['IS_OWNER'] = $isOwner;
         $this->arResult['IS_INTERNAL'] = $isInternal;
 
-        // 4. Truy vấn trạng thái CRM Lead tương ứng
+        // 4. Truy vấn trạng thái CRM Lead và Deal tương ứng
         $leadId = (int)($request['CRM_LEAD_ID'] ?? 0);
+        $dealId = (int)($request['CRM_DEAL_ID'] ?? 0);
         $leadData = null;
+        $dealData = null;
         $leadStatusId = 'NEW';
         $assignedUserName = 'Chuyên viên tư vấn AASC';
+        $estimatedFee = 0.0;
+        $isQuoteApproved = false;
 
-        if ($leadId > 0 && Loader::includeModule('crm')) {
-            $leadData = \CCrmLead::GetByID($leadId, false);
-            if ($leadData) {
-                $leadStatusId = (string)($leadData['STATUS_ID'] ?? 'NEW');
-                $assignedId = (int)($leadData['ASSIGNED_BY_ID'] ?? 0);
-                if ($assignedId > 0) {
-                    $assignedUser = \Bitrix\Main\UserTable::getById($assignedId)->fetch();
-                    if ($assignedUser) {
-                        $assignedUserName = \CUser::FormatName(
-                            \CSite::GetNameFormat(),
-                            $assignedUser,
-                            true,
-                            false
-                        ) ?: $assignedUser['LOGIN'];
+        if (Loader::includeModule('crm')) {
+            if ($leadId > 0) {
+                $leadData = \CCrmLead::GetByID($leadId, false);
+                if ($leadData) {
+                    $leadStatusId = (string)($leadData['STATUS_ID'] ?? 'NEW');
+                    $assignedId = (int)($leadData['ASSIGNED_BY_ID'] ?? 0);
+                    if ($assignedId > 0) {
+                        $assignedUser = \Bitrix\Main\UserTable::getById($assignedId)->fetch();
+                        if ($assignedUser) {
+                            $assignedUserName = \CUser::FormatName(\CSite::GetNameFormat(), $assignedUser, true, false) ?: $assignedUser['LOGIN'];
+                        }
+                    }
+
+                    $estimatedFee = (float)($leadData['OPPORTUNITY'] ?? 0);
+                    if ($estimatedFee <= 0 && !empty($leadData['UF_ESTIMATED_FEE'])) {
+                        $estimatedFee = (float)$leadData['UF_ESTIMATED_FEE'];
+                    }
+
+                    global $USER_FIELD_MANAGER;
+                    $statusVal = $USER_FIELD_MANAGER->GetUserFieldValue("CRM_LEAD", "UF_APPROVAL_STATUS", $leadId);
+                    if (!empty($statusVal)) {
+                        if (is_numeric($statusVal)) {
+                            $enumRow = \CUserFieldEnum::GetList([], ["ID" => (int)$statusVal])->Fetch();
+                            $isQuoteApproved = ($enumRow && $enumRow["XML_ID"] === "APPROVED");
+                        } else {
+                            $isQuoteApproved = ((string)$statusVal === "APPROVED");
+                        }
+                    }
+                }
+            }
+
+            if ($dealId > 0) {
+                $dealData = \CCrmDeal::GetByID($dealId, false);
+                if ($dealData) {
+                    $dealAssignedId = (int)($dealData['ASSIGNED_BY_ID'] ?? 0);
+                    if ($dealAssignedId > 0) {
+                        $dealUser = \Bitrix\Main\UserTable::getById($dealAssignedId)->fetch();
+                        if ($dealUser) {
+                            $assignedUserName = \CUser::FormatName(\CSite::GetNameFormat(), $dealUser, true, false) ?: $dealUser['LOGIN'];
+                        }
+                    }
+                    if (!empty($dealData['OPPORTUNITY']) && (float)$dealData['OPPORTUNITY'] > 0) {
+                        $estimatedFee = (float)$dealData['OPPORTUNITY'];
                     }
                 }
             }
         }
 
         $this->arResult['LEAD'] = $leadData;
+        $this->arResult['DEAL'] = $dealData;
         $this->arResult['ASSIGNED_USER_NAME'] = $assignedUserName;
+        $this->arResult['ESTIMATED_FEE'] = $estimatedFee;
+        $this->arResult['IS_QUOTE_APPROVED'] = $isQuoteApproved;
 
-        // 5. Xác định bước tiến trình (Current Step: 1 -> 4)
+        // 5. Xác định bước tiến trình (Current Step: 1 -> 6)
         $currentStep = 1;
-        if (in_array($leadStatusId, ['IN_PROCESS', 'ASSIGNED', '2'])) {
-            $currentStep = 2;
-        } elseif (in_array($leadStatusId, ['PROPOSAL_SENT', 'APPROVED', 'PROCESSED', '3'])) {
-            $currentStep = 3;
-        } elseif (in_array($leadStatusId, ['CONVERTED', 'WON', 'COMPLETED', '4'])) {
-            $currentStep = 4;
+        if ($dealId > 0 && $dealData) {
+            $dealStage = (string)($dealData['STAGE_ID'] ?? '');
+            if ($dealStage === 'C1:FIELDWORK') {
+                $currentStep = 4;
+            } elseif (in_array($dealStage, ['C1:REVIEW_MANAGER', 'C1:REVIEW_DIRECTOR'], true)) {
+                $currentStep = 5;
+            } elseif ($dealStage === 'C1:WON') {
+                $currentStep = 6;
+            } else {
+                // C1:NEW, C1:PREPARATION
+                $currentStep = 3;
+            }
+        } else {
+            // Còn ở giai đoạn Lead
+            if (in_array($leadStatusId, ['IN_PROCESS', 'PROPOSAL_SENT', 'APPROVED', 'PROCESSED'])) {
+                $currentStep = 2;
+            } elseif (in_array($leadStatusId, ['CONVERTED', 'WON', 'COMPLETED'])) {
+                $currentStep = 3;
+            } else {
+                $currentStep = 1;
+            }
         }
 
-        $this->arResult['CURRENT_STEP'] = $currentStep;
-        $this->arResult['LEAD_STATUS_ID'] = $leadStatusId;
-        $this->arResult['WORKFLOW_STEPS'] = self::WORKFLOW_STEPS;
+        // Kiểm tra điều kiện cho phép khách hàng ký hợp đồng
+        $canSignContract = false;
+        if ($dealId <= 0 && ($isQuoteApproved || in_array($leadStatusId, ['PROPOSAL_SENT', 'APPROVED'], true)) && $estimatedFee > 0) {
+            $canSignContract = true;
+        }
 
-        // 6. Nạp lịch sử trao đổi từ CRM Timeline của Lead
-        $this->arResult['TIMELINE_COMMENTS'] = $this->loadLeadTimelineComments($leadId);
+        $this->arResult['CAN_SIGN_CONTRACT'] = $canSignContract;
+        $this->arResult['CURRENT_STEP'] = $currentStep;
+        $this->arResult['WORKFLOW_STEPS'] = self::WORKFLOW_STEPS;
+        $this->arResult['HAS_FINAL_REPORT'] = ($currentStep === 6);
+        $this->arResult['REPORT_URL'] = '/portal/my-requests/' . $requestId . '/report/';
+
+        // 6. Nạp lịch sử trao đổi từ CRM Timeline của Lead và Deal
+        $this->arResult['TIMELINE_COMMENTS'] = $this->loadTimelineComments($leadId, $dealId);
 
         // 7. Đăng ký kênh Push & Pull theo dõi thời gian thực
         if (Loader::includeModule('pull')) {
@@ -142,20 +211,31 @@ class AascAuditRequestDetailComponent extends \CBitrixComponent
     }
 
     /**
-     * Nạp danh sách trao đổi / ghi chú từ CRM Timeline
+     * Nạp danh sách trao đổi / ghi chú từ CRM Timeline (Lead và Deal)
      */
-    protected function loadLeadTimelineComments(int $leadId): array
+    protected function loadTimelineComments(int $leadId, int $dealId = 0): array
     {
         $comments = [];
-        if ($leadId <= 0 || !Loader::includeModule('crm')) {
+        if (($leadId <= 0 && $dealId <= 0) || !Loader::includeModule('crm')) {
             return $comments;
         }
 
-        $bindings = \Bitrix\Crm\Timeline\Entity\TimelineBindingTable::getList([
-            'filter' => [
+        $filter = ['LOGIC' => 'OR'];
+        if ($leadId > 0) {
+            $filter[] = [
                 '=ENTITY_TYPE_ID' => \CCrmOwnerType::Lead,
                 '=ENTITY_ID'      => $leadId,
-            ],
+            ];
+        }
+        if ($dealId > 0) {
+            $filter[] = [
+                '=ENTITY_TYPE_ID' => \CCrmOwnerType::Deal,
+                '=ENTITY_ID'      => $dealId,
+            ];
+        }
+
+        $bindings = \Bitrix\Crm\Timeline\Entity\TimelineBindingTable::getList([
+            'filter' => $filter,
             'select' => [
                 'ID'        => 'ITEM.ID',
                 'TYPE_ID'   => 'ITEM.TYPE_ID',
