@@ -25,6 +25,6 @@ return function (RoutingConfigurator $routes) {
     };
 
     // Hỗ trợ cả định dạng có và không có dấu gạch chéo cuối
-    $routes->get('portal/my-requests/{id}', $routeHandler)->where('id', '[0-9]+');
-    $routes->get('portal/my-requests/{id}/', $routeHandler)->where('id', '[0-9]+');
+    $routes->get('/portal/my-requests/{id}', $routeHandler)->where('id', '[0-9]+');
+    $routes->get('/portal/my-requests/{id}/', $routeHandler)->where('id', '[0-9]+');
 };
