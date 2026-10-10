@@ -19,6 +19,11 @@ class LeadApprovalHandler
      * Bắt sự kiện OnBeforeCrmDealUpdate: Chặn chuyển sang Invoice, In Progress, Final Invoice, Won
      * nếu dự toán phí chưa được phê duyệt (UF_APPROVAL_STATUS !== APPROVED)
      */
+    /**
+     * Bắt sự kiện OnBeforeCrmDealUpdate: Chặn cập nhật Deal sang các giai đoạn tiếp theo
+     * nếu dự toán phí chưa được phê duyệt (UF_APPROVAL_STATUS !== APPROVED)
+     * hoặc người dùng không đủ thẩm quyền theo quy trình kiểm toán AASC
+     */
     public static function onBeforeDealUpdate(&$arFields): bool
     {
         $dealId = (int)($arFields["ID"] ?? 0);
@@ -48,63 +53,62 @@ class LeadApprovalHandler
             return true;
         }
 
+        global $USER;
+        $currentUserId = (int)($USER ? $USER->GetID() : 0);
+        $userLogin = $USER ? (string)$USER->GetLogin() : '';
+        $isAdmin = ($currentUserId === 1 || ($USER && $USER->IsAdmin()));
+        $isDirector = ($isAdmin || $userLogin === 'director' || $currentUserId === 4);
+
         $categoryId = (int)($deal["CATEGORY_ID"] ?? 0);
 
-        // 1. Kiểm soát phân quyền cho Deal thuộc Category 1: Quy trình Kiểm toán AASC
-        if ($categoryId === 1 || strpos($newStageId, 'C1:') === 0) {
-            global $USER;
-            $currentUserId = (int)($USER ? $USER->GetID() : 0);
-            $userLogin = $USER ? (string)$USER->GetLogin() : '';
-            $isAdmin = ($currentUserId === 1 || ($USER && $USER->IsAdmin()));
+        // Danh sách các stage đóng Deal (hoàn tất thành công hoặc hủy/thất bại)
+        $closingStages = [
+            'C1:WON',    // Phát hành Báo cáo chính thức (Thành công - Cat 1)
+            'C1:LOSE',   // Hủy cuộc kiểm toán (Thất bại / Hủy - Cat 1)
+            'WON',       // Deal won (Thành công - Cat 0)
+            'LOSE',      // Deal lost (Thất bại - Cat 0)
+            'APOLOGY',   // Hủy / Từ chối (Cat 0)
+        ];
 
-            // Giai đoạn C1:FIELDWORK (Kiểm toán thực địa): Cần Trưởng nhóm (Senior) hoặc cấp trên phê duyệt kế hoạch
+        // 1. Kiểm soát thẩm quyền ĐÓNG DEAL (Close Deal / Hủy cuộc kiểm toán):
+        // Thẩm quyền tối cao thuộc về Ban Giám đốc (Director). Trưởng phòng (Manager) và các vai trò khác không có quyền.
+        if (in_array($newStageId, $closingStages, true)) {
+            if (!$isDirector) {
+                $msg = "Lỗi quy trình AASC: Chỉ Ban Giám đốc (Director) mới có thẩm quyền ký phát hành báo cáo kiểm toán chính thức hoặc hủy cuộc kiểm toán (Close Deal). Trưởng phòng (Manager) không có quyền hoàn tất hợp đồng này.";
+                return self::abortDealUpdate($msg, $dealId, $currentStageId, $arFields);
+            }
+        }
+
+        // 2. Kiểm soát phân quyền cho Deal thuộc Category 1: Quy trình Kiểm toán AASC
+        if ($categoryId === 1 || strpos($newStageId, 'C1:') === 0) {
+            // Giai đoạn C1:FIELDWORK (Kiểm toán thực địa): Cần Trưởng nhóm (Senior) hoặc cấp quản lý phê duyệt kế hoạch
             if ($newStageId === 'C1:FIELDWORK') {
                 if (!$isAdmin && !in_array($userLogin, ['senior', 'manager', 'director'], true)) {
-                    $msg = "Lỗi phân quyền AASC: Chỉ Trưởng nhóm kiểm toán (Senior) hoặc cấp quản lý mới có quyền phê duyệt kế hoạch để chuyển sang Kiểm toán thực địa.";
-                    $arFields["RESULT_MESSAGE"] = $msg;
-                    global $APPLICATION;
-                    $APPLICATION->ThrowException($msg);
-                    return false;
+                    $msg = "Lỗi quy trình AASC: Chỉ Trưởng nhóm kiểm toán (Senior) hoặc cấp quản lý mới có quyền phê duyệt kế hoạch để chuyển sang Kiểm toán thực địa.";
+                    return self::abortDealUpdate($msg, $dealId, $currentStageId, $arFields);
                 }
             }
 
             // Giai đoạn C1:REVIEW_MANAGER (Soát xét chủ nhiệm): Cần Trưởng nhóm (Senior) soát xét cấp 1 xong mới chuyển
             if ($newStageId === 'C1:REVIEW_MANAGER') {
                 if (!$isAdmin && !in_array($userLogin, ['senior', 'manager', 'director'], true)) {
-                    $msg = "Lỗi phân quyền AASC: Chỉ Trưởng nhóm kiểm toán (Senior) sau khi soát xét cấp 1 mới được chuyển hồ sơ cho Chủ nhiệm kiểm toán (Manager).";
-                    $arFields["RESULT_MESSAGE"] = $msg;
-                    global $APPLICATION;
-                    $APPLICATION->ThrowException($msg);
-                    return false;
+                    $msg = "Lỗi quy trình AASC: Chỉ Trưởng nhóm kiểm toán (Senior) sau khi soát xét cấp 1 mới được chuyển hồ sơ cho Chủ nhiệm kiểm toán (Manager).";
+                    return self::abortDealUpdate($msg, $dealId, $currentStageId, $arFields);
                 }
             }
 
             // Giai đoạn C1:REVIEW_DIRECTOR (Phê duyệt Ban Giám đốc): Cần Chủ nhiệm (Manager) soát xét cấp 2 xong mới chuyển
             if ($newStageId === 'C1:REVIEW_DIRECTOR') {
                 if (!$isAdmin && !in_array($userLogin, ['manager', 'director'], true)) {
-                    $msg = "Lỗi phân quyền AASC: Chỉ Chủ nhiệm kiểm toán (Manager) mới có quyền trình hồ sơ lên Ban Giám đốc (Director) phê duyệt.";
-                    $arFields["RESULT_MESSAGE"] = $msg;
-                    global $APPLICATION;
-                    $APPLICATION->ThrowException($msg);
-                    return false;
-                }
-            }
-
-            // Giai đoạn C1:WON (Phát hành Báo cáo chính thức): Chỉ Ban Giám đốc (Director) được phép phê duyệt
-            if ($newStageId === 'C1:WON') {
-                if (!$isAdmin && $userLogin !== 'director') {
-                    $msg = "Lỗi phân quyền AASC: Chỉ Ban Giám đốc (Director) mới có thẩm quyền ký và phát hành Báo cáo kiểm toán chính thức (VSA 700).";
-                    $arFields["RESULT_MESSAGE"] = $msg;
-                    global $APPLICATION;
-                    $APPLICATION->ThrowException($msg);
-                    return false;
+                    $msg = "Lỗi quy trình AASC: Chỉ Chủ nhiệm kiểm toán (Manager) mới có quyền trình hồ sơ lên Ban Giám đốc (Director) phê duyệt.";
+                    return self::abortDealUpdate($msg, $dealId, $currentStageId, $arFields);
                 }
             }
 
             return true;
         }
 
-        // 2. Kiểm soát cho Deal Category 0 (General) liên kết từ Lead
+        // 3. Kiểm soát cho Deal Category 0 (General) liên kết từ Lead
         $restrictedStages = [
             "PREPAYMENT_INVOICE", // Invoice (Hóa đơn / Gửi báo giá)
             "EXECUTING",          // In progress (Tiến hành kiểm toán)
@@ -134,14 +138,39 @@ class LeadApprovalHandler
             if ($leadId > 0 && $xmlId !== "APPROVED") {
                 $statusName = $enumRow["VALUE"] ?? "Chưa được duyệt";
                 $msg = "Lỗi quy trình AASC: Hồ sơ kiểm toán chưa được phê duyệt dự toán phí! (Trạng thái hiện tại: " . $statusName . "). Vui lòng hoàn tất phê duyệt trước khi chuyển sang bước Hóa đơn / Triển khai.";
-                $arFields["RESULT_MESSAGE"] = $msg;
-                global $APPLICATION;
-                $APPLICATION->ThrowException($msg);
-                return false;
+                return self::abortDealUpdate($msg, $dealId, $currentStageId, $arFields);
             }
         }
 
         return true;
+    }
+
+    /**
+     * Helper ngắt luồng cập nhật Deal và thiết lập đầy đủ thông báo lỗi cho Bitrix CRM UI
+     */
+    private static function abortDealUpdate(string $msg, int $dealId, string $currentStageId, array &$arFields): bool
+    {
+        $arFields["RESULT_MESSAGE"] = $msg;
+        global $APPLICATION;
+        if ($APPLICATION) {
+            $APPLICATION->ThrowException($msg);
+            $APPLICATION->ThrowException(new \CAdminException([
+                ['id' => 'STAGE_ID', 'text' => $msg]
+            ]));
+        }
+
+        // Nếu request gửi từ Stage bar hoặc Termination Dialog (SAVE_PROGRESS)
+        $action = (string)($_REQUEST['action'] ?? $_REQUEST['ACTION'] ?? '');
+        if ($action === 'SAVE_PROGRESS' && function_exists('__CrmDealListEndResponse')) {
+            __CrmDealListEndResponse([
+                'TYPE'  => \CCrmOwnerType::DealName,
+                'ID'    => $dealId,
+                'VALUE' => $currentStageId,
+                'ERROR' => $msg,
+            ]);
+        }
+
+        return false;
     }
 
     /**
