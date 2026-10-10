@@ -18,9 +18,16 @@ if ($request->get('logout') === 'yes') {
     die();
 }
 
-// Nếu đã đăng nhập thì tự động chuyển tiếp tới backurl
+// Nếu đã đăng nhập thì tự động chuyển tiếp tới không gian tương ứng
 if (is_object($USER) && $USER->IsAuthorized()) {
-    LocalRedirect($backUrl);
+    $isInternal = class_exists('\Aasc\Audit\Handler\PortalAccessHandler')
+        && \Aasc\Audit\Handler\PortalAccessHandler::isInternalUser((int)$USER->GetID());
+
+    if ($isInternal) {
+        LocalRedirect('/online/');
+    } else {
+        LocalRedirect($backUrl);
+    }
     die();
 }
 

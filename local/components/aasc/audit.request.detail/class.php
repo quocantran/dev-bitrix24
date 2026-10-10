@@ -234,22 +234,37 @@ class AascAuditRequestDetailComponent extends \CBitrixComponent
             ];
         }
 
-        $bindings = \Bitrix\Crm\Timeline\Entity\TimelineBindingTable::getList([
+        $bindingRows = \Bitrix\Crm\Timeline\Entity\TimelineBindingTable::getList([
             'filter' => $filter,
-            'select' => [
-                'ID'        => 'ITEM.ID',
-                'TYPE_ID'   => 'ITEM.TYPE_ID',
-                'COMMENT'   => 'ITEM.COMMENT',
-                'CREATED'   => 'ITEM.CREATED',
-                'AUTHOR_ID' => 'ITEM.AUTHOR_ID',
+            'select' => ['OWNER_ID'],
+        ])->fetchAll();
+
+        $timelineIds = array_unique(array_filter(array_column($bindingRows, 'OWNER_ID')));
+        if (empty($timelineIds)) {
+            return $comments;
+        }
+
+        $items = \Bitrix\Crm\Timeline\Entity\TimelineTable::getList([
+            'filter' => [
+                '@ID'      => $timelineIds,
+                '=TYPE_ID' => \Bitrix\Crm\Timeline\TimelineType::COMMENT,
             ],
-            'order' => ['ITEM.CREATED' => 'ASC'],
+            'select' => [
+                'ID',
+                'TYPE_ID',
+                'COMMENT',
+                'CREATED',
+                'AUTHOR_ID',
+            ],
+            'order' => ['CREATED' => 'ASC'],
         ]);
 
         $authorIds = [];
         $rawRows = [];
-        while ($row = $bindings->fetch()) {
-            if (!empty($row['COMMENT'])) {
+        while ($row = $items->fetch()) {
+            $commentText = trim(\Bitrix\Main\Text\Emoji::decode((string)$row['COMMENT']));
+            if ($commentText !== '') {
+                $row['COMMENT'] = $commentText;
                 $rawRows[] = $row;
                 if (!empty($row['AUTHOR_ID'])) {
                     $authorIds[] = (int)$row['AUTHOR_ID'];

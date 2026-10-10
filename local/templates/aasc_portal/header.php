@@ -10,6 +10,8 @@ global $USER;
 $isAuthorized = is_object($USER) && $USER->IsAuthorized();
 $userFullName = $isAuthorized ? ($USER->GetFormattedName() ?: $USER->GetLogin()) : '';
 $curPage = $APPLICATION->GetCurPage(false);
+$isInternal = $isAuthorized && class_exists('\Aasc\Audit\Handler\PortalAccessHandler') && \Aasc\Audit\Handler\PortalAccessHandler::isInternalUser();
+$logoUrl = $isInternal ? '/online/' : '/portal/';
 ?>
 <!DOCTYPE html>
 <html lang="<?=LANGUAGE_ID?>">
@@ -35,7 +37,7 @@ $curPage = $APPLICATION->GetCurPage(false);
     <header class="site-header">
         <div class="header-inner">
             <div class="brand-logo">
-                <a href="/portal/">AASC AUDIT & CONSULTING</a>
+                <a href="<?= $logoUrl ?>" title="<?= $isInternal ? 'Không Gian Nhân Viên AASC' : 'Trang Chủ Cổng Thông Tin AASC' ?>">AASC AUDIT & CONSULTING</a>
             </div>
 
             <nav class="portal-main-nav">
@@ -49,8 +51,8 @@ $curPage = $APPLICATION->GetCurPage(false);
 
             <div class="header-user-controls">
                 <?php if ($isAuthorized): ?>
-                    <?php if (class_exists('\Aasc\Audit\Handler\PortalAccessHandler') && \Aasc\Audit\Handler\PortalAccessHandler::isInternalUser()): ?>
-                        <a href="/stream/" class="btn-intranet-link" title="Chuyển sang Mạng nội bộ / CRM">Vào Intranet &rarr;</a>
+                    <?php if ($isInternal): ?>
+                        <a href="/online/" class="btn-intranet-link" title="Chuyển sang Không Gian Làm Việc / CRM Nhân Viên">Vào Trang Nhân Viên &rarr;</a>
                     <?php endif; ?>
                     <span class="user-greeting">Xin chào, <strong><?= htmlspecialcharsbx($userFullName) ?></strong></span>
                     <a href="/portal/auth/?logout=yes" class="btn-auth-logout">Đăng Xuất</a>

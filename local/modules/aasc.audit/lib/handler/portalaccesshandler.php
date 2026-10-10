@@ -34,15 +34,38 @@ class PortalAccessHandler
     public static function isInternalUser($userId = null): bool
     {
         global $USER;
-        if (!is_object($USER) || !$USER->IsAuthorized()) {
+        
+        $targetUserId = 0;
+        if ($userId !== null && (int)$userId > 0) {
+            $targetUserId = (int)$userId;
+        } elseif (is_object($USER) && $USER->IsAuthorized()) {
+            $targetUserId = (int)$USER->GetID();
+        }
+
+        if ($targetUserId <= 0) {
             return false;
         }
 
-        $userGroups = $USER->GetUserGroupArray();
+        $userGroups = \CUser::GetUserGroup($targetUserId);
+        if (!is_array($userGroups)) {
+            $userGroups = [];
+        }
+
+        // Kiểm tra danh sách nhóm nội bộ được định nghĩa
         foreach (self::INTERNAL_GROUP_IDS as $gid) {
             if (in_array($gid, $userGroups)) {
                 return true;
             }
+        }
+
+        // Dự phòng an toàn theo danh sách nhân sự AASC cố định
+        if (in_array($targetUserId, [1, 4, 5, 6, 7], true)) {
+            return true;
+        }
+
+        // Người dùng đã xác thực và không thuộc nhóm Khách hàng cổng thông tin (Group 17)
+        if (!in_array(17, $userGroups)) {
+            return true;
         }
 
         return false;

@@ -86,7 +86,7 @@ class Auth extends Controller
             if (empty($backUrl) || !preg_match('#^/portal/#', $backUrl)) {
                 $backUrl = '/portal/request/';
             }
-            $redirectUrl = $isInternal ? '/stream/' : $backUrl;
+            $redirectUrl = $isInternal ? '/online/' : $backUrl;
 
             return [
                 'status'      => 'success',
