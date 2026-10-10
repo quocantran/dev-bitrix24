@@ -9,6 +9,12 @@ class LeadApprovalHandler
     /** Cờ đánh dấu luồng ký hợp đồng hợp lệ từ Cổng thông tin (Portal) */
     public static bool $isPortalSign = false;
 
+    /** Cờ khóa ngăn chặn đệ quy khi cập nhật Lead/Deal */
+    private static bool $isHandlingLeadUpdate = false;
+
+    /** Bảng lưu trạng thái trước đó của Lead theo ID */
+    private static array $prevStatusMap = [];
+
     /**
      * Bắt sự kiện OnBeforeCrmDealUpdate: Chặn chuyển sang Invoice, In Progress, Final Invoice, Won
      * nếu dự toán phí chưa được phê duyệt (UF_APPROVAL_STATUS !== APPROVED)
@@ -143,6 +149,10 @@ class LeadApprovalHandler
      */
     public static function onBeforeLeadUpdate(&$arFields): bool
     {
+        if (self::$isHandlingLeadUpdate) {
+            return true;
+        }
+
         $newStatusId = (string)($arFields["STATUS_ID"] ?? '');
         $leadId = (int)($arFields["ID"] ?? 0);
         if ($leadId <= 0) {
@@ -155,6 +165,7 @@ class LeadApprovalHandler
         }
 
         $prevStatus = (string)($lead['STATUS_ID'] ?? 'NEW');
+        self::$prevStatusMap[$leadId] = $prevStatus;
         $prevFee = (float)($lead['OPPORTUNITY'] ?? 0);
         $effectiveStatus = !empty($newStatusId) ? $newStatusId : $prevStatus;
         $newFee = isset($arFields['OPPORTUNITY']) ? (float)$arFields['OPPORTUNITY'] : $prevFee;
@@ -177,11 +188,10 @@ class LeadApprovalHandler
         // 1. Khi chuyển sang IN_PROCESS và nhập tiền xong -> Bắn thông báo chuông tới Director để duyệt
         $feeChanged = isset($arFields['OPPORTUNITY']) && abs((float)$arFields['OPPORTUNITY'] - $prevFee) > 0.01;
         $statusChangedToInProcess = ($effectiveStatus === 'IN_PROCESS' && $prevStatus !== 'IN_PROCESS');
-        if ($effectiveStatus === 'IN_PROCESS' && $newFee > 0 && ($statusChangedToInProcess || $feeChanged || $prevFee <= 0)) {
+        if ($effectiveStatus === 'IN_PROCESS' && $newFee > 0 && ($statusChangedToInProcess || ($feeChanged && $prevFee <= 0))) {
             $waitingDirEnumId = self::getApprovalStatusEnumId('WAITING_DIR');
             if ($waitingDirEnumId) {
                 $arFields['UF_APPROVAL_STATUS'] = $waitingDirEnumId;
-                $USER_FIELD_MANAGER->Update("CRM_LEAD", $leadId, ["UF_APPROVAL_STATUS" => $waitingDirEnumId]);
             }
 
             // Gửi thông báo chuông nội bộ cho Director
@@ -197,21 +207,38 @@ class LeadApprovalHandler
                     'FROM_USER_ID'   => $currentUserId > 0 ? $currentUserId : 5,
                     'NOTIFY_TYPE'    => IM_NOTIFY_SYSTEM,
                     'NOTIFY_MODULE'  => 'aasc.audit',
-                    'NOTIFY_TAG'     => 'AASC|WAITING_DIR|' . $leadId . '|' . time(),
+                    'NOTIFY_TAG'     => 'AASC|WAITING_DIR|' . $leadId,
                     'NOTIFY_MESSAGE' => 'Trưởng phòng đã thẩm định và lập dự toán chi phí ' . number_format($newFee, 0, ',', '.') . ' VND cho hồ sơ #' . $leadId . ' (' . ($lead['TITLE'] ?? '') . '). Vui lòng vào xem xét và phê duyệt sang trạng thái Đã xử lý (Processed).',
                     'NOTIFY_LINK'    => '/crm/lead/details/' . $leadId . '/',
                 ]);
             }
 
-            // Ghi nhận vào CRM Timeline
+            // Ghi nhận vào CRM Timeline (chỉ khi chưa có ghi chú tương tự để tránh trùng lặp)
             if (\Bitrix\Main\Loader::includeModule('crm')) {
-                \Bitrix\Crm\Timeline\CommentEntry::create([
-                    'TEXT'      => 'Trưởng phòng đã lập dự toán chi phí: ' . number_format($newFee, 0, ',', '.') . ' VND và chuyển hồ sơ sang trạng thái Đang xử lý (In Progress) để trình Ban Giám đốc phê duyệt.',
-                    'AUTHOR_ID' => $currentUserId > 0 ? $currentUserId : 5,
-                    'BINDINGS'  => [
-                        ['ENTITY_TYPE_ID' => \CCrmOwnerType::Lead, 'ENTITY_ID' => $leadId],
-                    ],
-                ]);
+                $connection = \Bitrix\Main\Application::getConnection();
+                $checkExist = $connection->query("
+                    SELECT t.ID FROM b_crm_timeline t
+                    JOIN b_crm_timeline_bind b ON b.OWNER_ID = t.ID
+                    WHERE b.ENTITY_TYPE_ID = " . (int)\CCrmOwnerType::Lead . "
+                      AND b.ENTITY_ID = " . (int)$leadId . "
+                      AND t.COMMENT LIKE '%Trưởng phòng đã lập dự toán chi phí%'
+                    LIMIT 1
+                ")->fetch();
+
+                if (!$checkExist) {
+                    self::$isHandlingLeadUpdate = true;
+                    try {
+                        \Bitrix\Crm\Timeline\CommentEntry::create([
+                            'TEXT'      => 'Trưởng phòng đã lập dự toán chi phí: ' . number_format($newFee, 0, ',', '.') . ' VND và chuyển hồ sơ sang trạng thái Đang xử lý (In Progress) để trình Ban Giám đốc phê duyệt.',
+                            'AUTHOR_ID' => $currentUserId > 0 ? $currentUserId : 5,
+                            'BINDINGS'  => [
+                                ['ENTITY_TYPE_ID' => \CCrmOwnerType::Lead, 'ENTITY_ID' => $leadId],
+                            ],
+                        ]);
+                    } finally {
+                        self::$isHandlingLeadUpdate = false;
+                    }
+                }
             }
         }
 
@@ -255,7 +282,6 @@ class LeadApprovalHandler
                 $approvedEnumId = self::getApprovalStatusEnumId('APPROVED');
                 if ($approvedEnumId) {
                     $arFields['UF_APPROVAL_STATUS'] = $approvedEnumId;
-                    $USER_FIELD_MANAGER->Update("CRM_LEAD", $leadId, ["UF_APPROVAL_STATUS" => $approvedEnumId]);
                 }
                 return true;
             }
@@ -511,93 +537,129 @@ class LeadApprovalHandler
      */
     public static function onAfterLeadUpdate(&$arFields): void
     {
-        $leadId = (int)($arFields['ID'] ?? 0);
-        if ($leadId <= 0) {
+        if (self::$isHandlingLeadUpdate) {
             return;
         }
 
-        // Kiểm tra xem Lead này có liên kết với yêu cầu kiểm toán nào trong aasc_audit_request không
-        $auditRequest = \Aasc\Audit\Model\AuditRequestTable::getList([
-            'filter' => ['=CRM_LEAD_ID' => $leadId],
-            'select' => ['ID', 'USER_ID', 'STATUS'],
-        ])->fetch();
+        self::$isHandlingLeadUpdate = true;
+        try {
+            $leadId = (int)($arFields['ID'] ?? 0);
+            if ($leadId <= 0) {
+                return;
+            }
 
-        if (!$auditRequest) {
-            return;
-        }
+            // Kiểm tra xem Lead này có liên kết với yêu cầu kiểm toán nào trong aasc_audit_request không
+            $auditRequest = \Aasc\Audit\Model\AuditRequestTable::getList([
+                'filter' => ['=CRM_LEAD_ID' => $leadId],
+                'select' => ['ID', 'USER_ID', 'STATUS'],
+            ])->fetch();
 
-        $requestId = (int)$auditRequest['ID'];
-        $leadStatusId = (string)($arFields['STATUS_ID'] ?? '');
+            if (!$auditRequest) {
+                return;
+            }
 
-        if (empty($leadStatusId) && Loader::includeModule('crm')) {
-            $lead = \CCrmLead::GetByID($leadId, false);
-            $leadStatusId = (string)($lead['STATUS_ID'] ?? 'NEW');
-        }
+            $requestId = (int)$auditRequest['ID'];
+            $requestUserId = (int)($auditRequest['USER_ID'] ?? 0);
+            $leadStatusId = (string)($arFields['STATUS_ID'] ?? '');
 
-        // Tính bước tiến trình hiện tại (1 -> 6)
-        // Mức 1: Tiếp nhận hồ sơ (NEW, IN_PROCESS)
-        // Mức 2: Thẩm định & Báo giá sẵn sàng (PROCESSED, APPROVED, PROPOSAL_SENT)
-        // Mức 3: Người dùng đồng ý ký hợp đồng (CONTRACT_SIGNED, CONVERTED)
-        $currentStep = 1;
-        $auditReqStatus = (string)($auditRequest['STATUS'] ?? '');
-        if ($auditReqStatus === 'CONTRACT_SIGNED' || in_array($leadStatusId, ['CONVERTED', 'WON', 'COMPLETED', '4'])) {
-            $currentStep = 3;
-        } elseif (in_array($leadStatusId, ['PROPOSAL_SENT', 'APPROVED', 'PROCESSED', '3'])) {
-            $currentStep = 2;
-        } else {
+            if (empty($leadStatusId) && Loader::includeModule('crm')) {
+                $lead = \CCrmLead::GetByID($leadId, false);
+                $leadStatusId = (string)($lead['STATUS_ID'] ?? 'NEW');
+            }
+
+            $prevStatus = self::$prevStatusMap[$leadId] ?? '';
+            $statusChanged = (!empty($prevStatus) && $prevStatus !== $leadStatusId);
+
+            // Tính bước tiến trình hiện tại (1 -> 6)
+            // Mức 1: Tiếp nhận hồ sơ (NEW, IN_PROCESS)
+            // Mức 2: Thẩm định & Báo giá sẵn sàng (PROCESSED, APPROVED, PROPOSAL_SENT)
+            // Mức 3: Người dùng đồng ý ký hợp đồng (CONTRACT_SIGNED, CONVERTED)
             $currentStep = 1;
-        }
+            $auditReqStatus = (string)($auditRequest['STATUS'] ?? '');
+            if ($auditReqStatus === 'CONTRACT_SIGNED' || in_array($leadStatusId, ['CONVERTED', 'WON', 'COMPLETED', '4'])) {
+                $currentStep = 3;
+            } elseif (in_array($leadStatusId, ['PROPOSAL_SENT', 'APPROVED', 'PROCESSED', '3'])) {
+                $currentStep = 2;
+            } else {
+                $currentStep = 1;
+            }
 
-        // Cập nhật lại cột STATUS trong bảng aasc_audit_request nếu khách hàng chưa ký hợp đồng
-        if ($auditReqStatus !== 'CONTRACT_SIGNED') {
-            \Aasc\Audit\Model\AuditRequestTable::update($requestId, [
-                'STATUS' => $leadStatusId,
-            ]);
-        }
+            // Cập nhật lại cột STATUS trong bảng aasc_audit_request nếu khách hàng chưa ký hợp đồng và có đổi trạng thái
+            if ($auditReqStatus !== 'CONTRACT_SIGNED' && $statusChanged) {
+                \Aasc\Audit\Model\AuditRequestTable::update($requestId, [
+                    'STATUS' => $leadStatusId,
+                ]);
+            }
 
-        // Đẩy sự kiện qua Push & Pull để giao diện Stepper của khách hàng cập nhật trực tiếp
-        if (Loader::includeModule('pull')) {
-            \CPullWatch::AddToStack('AASC_AUDIT_REQUEST_' . $requestId, [
-                'module_id' => 'aasc.audit',
-                'command'   => 'request_status_updated',
-                'params'    => [
-                    'requestId' => $requestId,
-                    'leadId'    => $leadId,
-                    'statusId'  => $leadStatusId,
-                    'stepIndex' => $currentStep,
-                ]
-            ]);
-        }
+            // Đẩy sự kiện qua Push & Pull (WebSocket) để giao diện Stepper của khách hàng cập nhật trực tiếp
+            if (Loader::includeModule('pull')) {
+                $eventData = [
+                    'module_id' => 'aasc.audit',
+                    'command'   => 'request_status_updated',
+                    'params'    => [
+                        'requestId' => $requestId,
+                        'leadId'    => $leadId,
+                        'statusId'  => $leadStatusId,
+                        'stepIndex' => $currentStep,
+                    ]
+                ];
 
-        // Nếu chuyển sang PROCESSED: Ghi nhận Timeline CRM và bắn thông báo chuông cho Manager
-        if ($leadStatusId === 'PROCESSED' && Loader::includeModule('crm')) {
-            global $USER;
-            $authorId = (int)($USER ? $USER->GetID() : 4);
-            $lead = \CCrmLead::GetByID($leadId, false);
-            $feeVal = (float)($lead['OPPORTUNITY'] ?? 0);
-            $feeStr = $feeVal > 0 ? number_format($feeVal, 0, ',', '.') . ' VNĐ' : '';
+                \CPullWatch::AddToStack('AASC_AUDIT_REQUEST_' . $requestId, $eventData);
 
-            \Bitrix\Crm\Timeline\CommentEntry::create([
-                'TEXT'      => 'Ban Giám đốc đã phê duyệt dự toán chi phí' . ($feeStr ? ' (' . $feeStr . ')' : '') . '. Hồ sơ được chuyển sang trạng thái Đã xử lý (Processed) để phát hành báo giá cho khách hàng trên Cổng thông tin.',
-                'AUTHOR_ID' => $authorId > 0 ? $authorId : 4,
-                'BINDINGS'  => [
-                    ['ENTITY_TYPE_ID' => \CCrmOwnerType::Lead, 'ENTITY_ID' => $leadId],
-                ],
-            ]);
-
-            if (Loader::includeModule('im')) {
-                $assignedId = (int)($lead['ASSIGNED_BY_ID'] ?? 5);
-                if ($assignedId > 0 && $assignedId !== $authorId) {
-                    \CIMNotify::Add([
-                        'TO_USER_ID'     => $assignedId,
-                        'FROM_USER_ID'   => $authorId,
-                        'NOTIFY_TYPE'    => IM_NOTIFY_SYSTEM,
-                        'NOTIFY_MODULE'  => 'aasc.audit',
-                        'NOTIFY_TAG'     => 'AASC|APPROVED|' . $leadId,
-                        'NOTIFY_MESSAGE' => 'Hồ sơ #' . $leadId . ' (' . ($lead['TITLE'] ?? '') . ') đã được Ban Giám đốc phê duyệt dự toán phí ' . $feeStr . '. Báo giá đã được phát hành cho khách hàng.',
-                    ]);
+                if ($requestUserId > 0) {
+                    \Bitrix\Pull\Event::add($requestUserId, $eventData);
                 }
             }
+
+            // Nếu thực sự chuyển sang PROCESSED: Ghi nhận Timeline CRM và bắn thông báo chuông cho Manager
+            // CHỈ GHI KHI: trạng thái vừa đổi sang PROCESSED (từ trạng thái khác) và chưa từng có ghi chú phê duyệt cho Lead này
+            if ($leadStatusId === 'PROCESSED' && $statusChanged && Loader::includeModule('crm')) {
+                $connection = \Bitrix\Main\Application::getConnection();
+                $checkExist = $connection->query("
+                    SELECT t.ID FROM b_crm_timeline t
+                    JOIN b_crm_timeline_bind b ON b.OWNER_ID = t.ID
+                    WHERE b.ENTITY_TYPE_ID = " . (int)\CCrmOwnerType::Lead . "
+                      AND b.ENTITY_ID = " . (int)$leadId . "
+                      AND t.COMMENT LIKE '%Ban Giám đốc đã phê duyệt dự toán chi phí%'
+                    LIMIT 1
+                ")->fetch();
+
+                if (!$checkExist) {
+                    $directorUser = \Bitrix\Main\UserTable::getList([
+                        'filter' => ['=LOGIN' => 'director', '=ACTIVE' => 'Y'],
+                        'select' => ['ID'],
+                    ])->fetch();
+                    $directorId = $directorUser ? (int)$directorUser['ID'] : 4;
+
+                    $lead = \CCrmLead::GetByID($leadId, false);
+                    $feeVal = (float)($lead['OPPORTUNITY'] ?? 0);
+                    $feeStr = $feeVal > 0 ? number_format($feeVal, 0, ',', '.') . ' VNĐ' : '';
+
+                    \Bitrix\Crm\Timeline\CommentEntry::create([
+                        'TEXT'      => 'Ban Giám đốc đã phê duyệt dự toán chi phí' . ($feeStr ? ' (' . $feeStr . ')' : '') . '. Hồ sơ được chuyển sang trạng thái Đã xử lý (Processed) để phát hành báo giá cho khách hàng trên Cổng thông tin.',
+                        'AUTHOR_ID' => $directorId,
+                        'BINDINGS'  => [
+                            ['ENTITY_TYPE_ID' => \CCrmOwnerType::Lead, 'ENTITY_ID' => $leadId],
+                        ],
+                    ]);
+
+                    if (Loader::includeModule('im')) {
+                        $assignedId = (int)($lead['ASSIGNED_BY_ID'] ?? 5);
+                        if ($assignedId > 0 && $assignedId !== $directorId) {
+                            \CIMNotify::Add([
+                                'TO_USER_ID'     => $assignedId,
+                                'FROM_USER_ID'   => $directorId,
+                                'NOTIFY_TYPE'    => IM_NOTIFY_SYSTEM,
+                                'NOTIFY_MODULE'  => 'aasc.audit',
+                                'NOTIFY_TAG'     => 'AASC|APPROVED|' . $leadId,
+                                'NOTIFY_MESSAGE' => 'Hồ sơ #' . $leadId . ' (' . ($lead['TITLE'] ?? '') . ') đã được Ban Giám đốc phê duyệt dự toán phí ' . $feeStr . '. Báo giá đã được phát hành cho khách hàng.',
+                            ]);
+                        }
+                    }
+                }
+            }
+        } finally {
+            self::$isHandlingLeadUpdate = false;
         }
     }
 

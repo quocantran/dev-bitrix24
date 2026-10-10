@@ -63,6 +63,13 @@ if (!empty($dealIds) && Loader::includeModule('crm')) {
         $dealsMap[(int)$d['ID']] = $d;
     }
 }
+
+// Đăng ký theo dõi toàn bộ hồ sơ của người dùng qua kênh Push & Pull
+if (!empty($requests) && Loader::includeModule('pull')) {
+    foreach ($requests as $r) {
+        \CPullWatch::Add($currentUserId, 'AASC_AUDIT_REQUEST_' . (int)$r['ID'], true);
+    }
+}
 ?>
 
 <div style="max-width: 1100px; margin: 0 auto; padding: 1.5rem 0;">
@@ -199,8 +206,7 @@ if (!empty($dealIds) && Loader::includeModule('crm')) {
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Tự động kiểm tra cập nhật trạng thái thời gian thực mỗi 5 giây
-    setInterval(function() {
+    function refreshTable() {
         fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(res => res.text())
             .then(html => {
@@ -213,7 +219,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             })
             .catch(() => {});
-    }, 5000);
+    }
+
+    // Tích hợp trực tiếp Bitrix Push & Pull WebSocket (Zero-Polling)
+    if (typeof BX !== 'undefined' && BX.PULL) {
+        BX.PULL.subscribe({
+            moduleId: 'aasc.audit',
+            command: 'request_status_updated',
+            callback: function() {
+                refreshTable();
+            }
+        });
+    }
+
+    // Tự động đồng bộ 1 lần khi người dùng quay lại tab này
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+            refreshTable();
+        }
+    });
 });
 </script>
 

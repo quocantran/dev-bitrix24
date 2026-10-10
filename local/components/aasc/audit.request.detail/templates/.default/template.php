@@ -373,7 +373,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Polling định kỳ mỗi 3.5 giây đảm bảo realtime 100% không bị phụ thuộc vào websocket drop
+    // Đồng bộ trạng thái mới nhất từ server khi nhận tín hiệu từ WebSocket
     function fetchLiveStatus() {
         fetch('/bitrix/services/main/ajax.php?action=aasc:audit.controller.request.getStatus&requestId=' + requestId)
             .then(res => res.json())
@@ -385,10 +385,12 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(() => {});
     }
 
-    setInterval(fetchLiveStatus, 3500);
+    // Tích hợp trực tiếp Bitrix Push & Pull WebSocket thời gian thực (Zero-Polling)
+    function initPullSubscription() {
+        if (typeof BX === 'undefined' || !BX.PULL) {
+            return;
+        }
 
-    // Tích hợp Bitrix Push & Pull thời gian thực qua WebSocket nếu khả dụng
-    if (typeof BX !== 'undefined' && BX.PULL) {
         BX.PULL.extendWatch('AASC_AUDIT_REQUEST_' + requestId);
 
         BX.PULL.subscribe({
@@ -396,7 +398,7 @@ document.addEventListener('DOMContentLoaded', function() {
             callback: function(data) {
                 if (!data || !data.params) return;
 
-                // Trường hợp 1: Nhận sự kiện chuyển bước trạng thái kiểm toán
+                // Trường hợp 1: Nhận sự kiện chuyển bước trạng thái kiểm toán từ WebSocket
                 if (data.command === 'request_status_updated' && parseInt(data.params.requestId) === requestId) {
                     fetchLiveStatus();
                 }
@@ -412,6 +414,19 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    if (typeof BX !== 'undefined') {
+        BX.ready(initPullSubscription);
+    } else {
+        initPullSubscription();
+    }
+
+    // Khi người dùng chuyển lại tab này, tự động đồng bộ nhẹ 1 lần
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+            fetchLiveStatus();
+        }
+    });
 
     // Cập nhật giao diện thanh Stepper khi nhận trạng thái mới (6 bước)
     function updateStepperUI(currentStep) {

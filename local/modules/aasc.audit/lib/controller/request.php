@@ -309,14 +309,26 @@ class Request extends Controller
             'STATUS' => 'CONTRACT_SIGNED',
         ]);
 
-        // Ghi nhận vào Timeline của Lead trong CRM
-        \Bitrix\Crm\Timeline\CommentEntry::create([
-            'TEXT'      => 'Khách hàng (' . ($request['COMPANY_NAME'] ?? '') . ') đã xác nhận chấp thuận dự toán phí (' . number_format($fee, 0, ',', '.') . ' VNĐ) và đồng ý ký kết hợp đồng trên Cổng thông tin (Portal). Đề nghị Trưởng phòng (Manager) và Ban Giám đốc (Director) vào CRM chuyển đổi hồ sơ sang Hợp đồng (Deal).',
-            'AUTHOR_ID' => $currentUserId,
-            'BINDINGS'  => [
-                ['ENTITY_TYPE_ID' => \CCrmOwnerType::Lead, 'ENTITY_ID' => $leadId],
-            ]
-        ]);
+        // Ghi nhận vào Timeline của Lead trong CRM (chỉ khi chưa có)
+        $connection = \Bitrix\Main\Application::getConnection();
+        $checkSignComment = $connection->query("
+            SELECT t.ID FROM b_crm_timeline t
+            JOIN b_crm_timeline_bind b ON b.OWNER_ID = t.ID
+            WHERE b.ENTITY_TYPE_ID = " . (int)\CCrmOwnerType::Lead . "
+              AND b.ENTITY_ID = " . (int)$leadId . "
+              AND t.COMMENT LIKE '%đồng ý ký kết hợp đồng trên Cổng thông tin%'
+            LIMIT 1
+        ")->fetch();
+
+        if (!$checkSignComment) {
+            \Bitrix\Crm\Timeline\CommentEntry::create([
+                'TEXT'      => 'Khách hàng (' . ($request['COMPANY_NAME'] ?? '') . ') đã xác nhận chấp thuận dự toán phí (' . number_format($fee, 0, ',', '.') . ' VNĐ) và đồng ý ký kết hợp đồng trên Cổng thông tin (Portal). Đề nghị Trưởng phòng (Manager) và Ban Giám đốc (Director) vào CRM chuyển đổi hồ sơ sang Hợp đồng (Deal).',
+                'AUTHOR_ID' => $currentUserId,
+                'BINDINGS'  => [
+                    ['ENTITY_TYPE_ID' => \CCrmOwnerType::Lead, 'ENTITY_ID' => $leadId],
+                ]
+            ]);
+        }
 
         // Gửi thông báo chuông nội bộ cho Director (user 4) và Manager (user 5)
         if (\Bitrix\Main\Loader::includeModule('im')) {
@@ -355,7 +367,7 @@ class Request extends Controller
 
         // Phát sóng Push & Pull cập nhật thời gian thực cho Portal (Step 3: Người dùng đồng ý ký)
         if (\Bitrix\Main\Loader::includeModule('pull')) {
-            \CPullWatch::AddToStack('AASC_AUDIT_REQUEST_' . $requestId, [
+            $eventData = [
                 'module_id' => 'aasc.audit',
                 'command'   => 'request_status_updated',
                 'params'    => [
@@ -364,7 +376,11 @@ class Request extends Controller
                     'statusId'  => 'CONTRACT_SIGNED',
                     'stepIndex' => 3,
                 ]
-            ]);
+            ];
+            \CPullWatch::AddToStack('AASC_AUDIT_REQUEST_' . $requestId, $eventData);
+            if ($currentUserId > 0) {
+                \Bitrix\Pull\Event::add($currentUserId, $eventData);
+            }
         }
 
         return [

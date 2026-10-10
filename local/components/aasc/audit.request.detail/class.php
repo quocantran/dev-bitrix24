@@ -302,7 +302,7 @@ class AascAuditRequestDetailComponent extends \CBitrixComponent
             if (class_exists('\Bitrix\Main\UI\Extension')) {
                 \Bitrix\Main\UI\Extension::load(['pull.client', 'ui.notification']);
             }
-            \CPullWatch::Add($currentUserId, 'AASC_AUDIT_REQUEST_' . $requestId);
+            \CPullWatch::Add($currentUserId, 'AASC_AUDIT_REQUEST_' . $requestId, true);
         }
 
         // Thiết lập tiêu đề trang
@@ -390,20 +390,36 @@ class AascAuditRequestDetailComponent extends \CBitrixComponent
             }
         }
 
+        $seen = [];
+        $uniqueComments = [];
         foreach ($rawRows as $row) {
             $authorId = (int)$row['AUTHOR_ID'];
             $createdObj = $row['CREATED'];
             $timeFormatted = is_object($createdObj) ? $createdObj->format('H:i d/m/Y') : (string)$createdObj;
+            $commentText = (string)$row['COMMENT'];
 
-            $comments[] = [
+            // Lọc bỏ bình luận phê duyệt bị sai tác giả (do bug đệ quy cũ tạo dưới tên khách hàng)
+            $isApprovalText = (strpos($commentText, 'Ban Giám đốc đã phê duyệt dự toán chi phí') !== false);
+            if ($isApprovalText && !in_array($authorId, [1, 4], true)) {
+                continue;
+            }
+
+            // Loại bỏ hoàn toàn các bình luận trùng lặp nội dung
+            $normKey = preg_replace('/\s+/', ' ', trim($commentText));
+            if (isset($seen[$normKey])) {
+                continue;
+            }
+            $seen[$normKey] = true;
+
+            $uniqueComments[] = [
                 'ID'         => (int)$row['ID'],
-                'TEXT'       => (string)$row['COMMENT'],
+                'TEXT'       => $commentText,
                 'AUTHOR_ID'  => $authorId,
                 'AUTHOR_NAME'=> $authorsMap[$authorId] ?? 'Hệ thống AASC',
                 'CREATED'    => $timeFormatted,
             ];
         }
 
-        return $comments;
+        return $uniqueComments;
     }
 }

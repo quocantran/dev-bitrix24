@@ -20,6 +20,12 @@ $logoUrl = $isInternal ? '/online/' : '/portal/';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php $APPLICATION->ShowTitle(); ?></title>
     <?php
+    // Kích hoạt kết nối Push & Pull WebSocket của Bitrix cho toàn bộ Portal
+    if ($isAuthorized && \Bitrix\Main\Loader::includeModule('pull')) {
+        \Bitrix\Main\UI\Extension::load(['pull.client', 'ui.notification']);
+        \CJSCore::Init(['pull', 'pull.client']);
+    }
+
     // Nạp các thẻ meta hệ thống, canonical, CSS/JS cơ sở
     $APPLICATION->ShowHead();
 
