@@ -284,12 +284,12 @@ class LeadApprovalHandler
         if ($newStatusId === "CONVERTED") {
             $auditRequest = \Aasc\Audit\Model\AuditRequestTable::getList([
                 'filter' => ['=CRM_LEAD_ID' => $leadId],
-                'select' => ['ID', 'CRM_DEAL_ID'],
+                'select' => ['ID', 'CRM_DEAL_ID', 'STATUS'],
             ])->fetch();
 
-            $isSignedFromPortal = !empty($arFields['IS_PORTAL_SIGN']) || self::$isPortalSign;
-            if ($auditRequest && (int)($auditRequest['CRM_DEAL_ID'] ?? 0) <= 0 && !$isSignedFromPortal) {
-                $msg = "Lỗi quy trình AASC: Hồ sơ kiểm toán đang ở giai đoạn Báo giá và đang chờ khách hàng chấp thuận ký hợp đồng trên Cổng thông tin (Portal). Chỉ khi khách hàng xác nhận ký hợp đồng thì hồ sơ mới được chuyển đổi sang Hợp đồng kiểm toán (Deal).";
+            $isSignedByClient = $auditRequest && ($auditRequest['STATUS'] === 'CONTRACT_SIGNED' || (int)($auditRequest['CRM_DEAL_ID'] ?? 0) > 0 || !empty($arFields['IS_PORTAL_SIGN']) || self::$isPortalSign);
+            if ($auditRequest && !$isSignedByClient) {
+                $msg = "Lỗi quy trình AASC: Khách hàng chưa xác nhận đồng ý ký hợp đồng trên Cổng thông tin (Portal). Chỉ khi khách hàng xác nhận chấp thuận báo giá và ký hợp đồng thì mới được chuyển đổi trạng thái hồ sơ sang Đã chuyển đổi (Converted).";
                 $arFields["RESULT_MESSAGE"] = $msg;
                 $APPLICATION->ThrowException($msg);
                 return false;
@@ -320,24 +320,28 @@ class LeadApprovalHandler
         // Kiểm tra xem Lead này có liên kết với yêu cầu kiểm toán nào trong aasc_audit_request không
         $auditRequest = \Aasc\Audit\Model\AuditRequestTable::getList([
             'filter' => ['=CRM_LEAD_ID' => $leadId],
-            'select' => ['ID', 'CRM_DEAL_ID'],
+            'select' => ['ID', 'CRM_DEAL_ID', 'STATUS'],
         ])->fetch();
 
         if (!$auditRequest) {
             return true;
         }
 
-        // Kiểm tra xem Deal này có thực sự đến từ thao tác ký hợp đồng trên Portal của khách hàng không
-        $isSignedFromPortal = !empty($arFields['IS_PORTAL_SIGN']) || self::$isPortalSign;
+        // Nếu hồ sơ này đã có Deal
+        $existingDealId = (int)($auditRequest['CRM_DEAL_ID'] ?? 0);
+        if ($existingDealId > 0) {
+            $msg = "Lỗi quy trình AASC: Hồ sơ kiểm toán này đã có Hợp đồng kiểm toán (Deal #{$existingDealId}). Không thể chuyển đổi tạo thêm Deal mới từ Lead này.";
+            $arFields["RESULT_MESSAGE"] = $msg;
+            global $APPLICATION;
+            $APPLICATION->ThrowException($msg);
+            return false;
+        }
 
-        // Nếu khách hàng chưa ký hợp đồng trên Portal hoặc hồ sơ đã có Deal
-        if (!$isSignedFromPortal) {
-            $existingDealId = (int)($auditRequest['CRM_DEAL_ID'] ?? 0);
-            if ($existingDealId > 0) {
-                $msg = "Lỗi quy trình AASC: Hồ sơ kiểm toán này đã có Hợp đồng kiểm toán (Deal #{$existingDealId}). Không thể chuyển đổi tạo thêm Deal mới từ Lead này.";
-            } else {
-                $msg = "Lỗi quy trình AASC: Hồ sơ kiểm toán đang ở giai đoạn Báo giá và đang chờ khách hàng chấp thuận ký hợp đồng trên Cổng thông tin (Portal). Chỉ khi khách hàng xác nhận ký hợp đồng thì hồ sơ mới được chuyển đổi sang Hợp đồng kiểm toán (Deal).";
-            }
+        // Kiểm tra xem khách hàng đã đồng ý ký hợp đồng trên Portal chưa
+        $isSignedByClient = ($auditRequest['STATUS'] === 'CONTRACT_SIGNED' || !empty($arFields['IS_PORTAL_SIGN']) || self::$isPortalSign);
+
+        if (!$isSignedByClient) {
+            $msg = "Lỗi quy trình AASC: Khách hàng chưa xác nhận đồng ý ký hợp đồng trên Cổng thông tin (Portal). Chỉ khi khách hàng xác nhận chấp thuận báo giá và ký hợp đồng thì Ban Giám đốc / Trưởng phòng mới được chuyển đổi hồ sơ sang Hợp đồng (Deal).";
             $arFields["RESULT_MESSAGE"] = $msg;
             global $APPLICATION;
             $APPLICATION->ThrowException($msg);
@@ -345,6 +349,50 @@ class LeadApprovalHandler
         }
 
         return true;
+    }
+
+    /**
+     * Bắt sự kiện OnAfterCrmDealAdd: Đồng bộ Deal vừa tạo vào aasc_audit_request và đẩy Push & Pull
+     */
+    public static function onAfterDealAdd(&$arFields): void
+    {
+        $dealId = (int)($arFields['ID'] ?? 0);
+        $leadId = (int)($arFields['LEAD_ID'] ?? 0);
+        if ($dealId <= 0 || $leadId <= 0) {
+            return;
+        }
+
+        $auditRequest = \Aasc\Audit\Model\AuditRequestTable::getList([
+            'filter' => ['=CRM_LEAD_ID' => $leadId],
+            'select' => ['ID', 'USER_ID', 'COMPANY_NAME'],
+        ])->fetch();
+
+        if (!$auditRequest) {
+            return;
+        }
+
+        $requestId = (int)$auditRequest['ID'];
+        $stageId = (string)($arFields['STAGE_ID'] ?? 'C1:PREPARATION');
+
+        // Cập nhật lại cột STATUS và CRM_DEAL_ID trong bảng aasc_audit_request
+        \Aasc\Audit\Model\AuditRequestTable::update($requestId, [
+            'CRM_DEAL_ID' => $dealId,
+            'STATUS'      => $stageId,
+        ]);
+
+        // Đẩy sự kiện qua Push & Pull
+        if (Loader::includeModule('pull')) {
+            \CPullWatch::AddToStack('AASC_AUDIT_REQUEST_' . $requestId, [
+                'module_id' => 'aasc.audit',
+                'command'   => 'request_status_updated',
+                'params'    => [
+                    'requestId' => $requestId,
+                    'dealId'    => $dealId,
+                    'statusId'  => $stageId,
+                    'stepIndex' => 3,
+                ]
+            ]);
+        }
     }
 
     /**
@@ -487,19 +535,25 @@ class LeadApprovalHandler
         }
 
         // Tính bước tiến trình hiện tại (1 -> 6)
+        // Mức 1: Tiếp nhận hồ sơ (NEW, IN_PROCESS)
+        // Mức 2: Thẩm định & Báo giá sẵn sàng (PROCESSED, APPROVED, PROPOSAL_SENT)
+        // Mức 3: Người dùng đồng ý ký hợp đồng (CONTRACT_SIGNED, CONVERTED)
         $currentStep = 1;
-        if (in_array($leadStatusId, ['IN_PROCESS', 'ASSIGNED', '2'])) {
-            $currentStep = 2;
+        $auditReqStatus = (string)($auditRequest['STATUS'] ?? '');
+        if ($auditReqStatus === 'CONTRACT_SIGNED' || in_array($leadStatusId, ['CONVERTED', 'WON', 'COMPLETED', '4'])) {
+            $currentStep = 3;
         } elseif (in_array($leadStatusId, ['PROPOSAL_SENT', 'APPROVED', 'PROCESSED', '3'])) {
             $currentStep = 2;
-        } elseif (in_array($leadStatusId, ['CONVERTED', 'WON', 'COMPLETED', '4'])) {
-            $currentStep = 3;
+        } else {
+            $currentStep = 1;
         }
 
-        // Cập nhật lại cột STATUS trong bảng aasc_audit_request nếu cần
-        \Aasc\Audit\Model\AuditRequestTable::update($requestId, [
-            'STATUS' => $leadStatusId,
-        ]);
+        // Cập nhật lại cột STATUS trong bảng aasc_audit_request nếu khách hàng chưa ký hợp đồng
+        if ($auditReqStatus !== 'CONTRACT_SIGNED') {
+            \Aasc\Audit\Model\AuditRequestTable::update($requestId, [
+                'STATUS' => $leadStatusId,
+            ]);
+        }
 
         // Đẩy sự kiện qua Push & Pull để giao diện Stepper của khách hàng cập nhật trực tiếp
         if (Loader::includeModule('pull')) {

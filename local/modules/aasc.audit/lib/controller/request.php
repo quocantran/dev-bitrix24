@@ -34,6 +34,12 @@ class Request extends Controller
                     new ActionFilter\HttpMethod([ActionFilter\HttpMethod::METHOD_POST]),
                 ],
             ],
+            'getStatus' => [
+                'prefilters' => [
+                    new ActionFilter\Authentication(),
+                    new ActionFilter\HttpMethod([ActionFilter\HttpMethod::METHOD_GET, ActionFilter\HttpMethod::METHOD_POST]),
+                ],
+            ],
         ];
     }
 
@@ -237,9 +243,18 @@ class Request extends Controller
         // Nếu đã có Deal thì trả về thành công
         if (!empty($request['CRM_DEAL_ID']) && (int)$request['CRM_DEAL_ID'] > 0) {
             return [
-                'status'  => 'success',
-                'dealId'  => (int)$request['CRM_DEAL_ID'],
-                'message' => 'Hồ sơ đã được ký hợp đồng dịch vụ trước đó.',
+                'status'    => 'success',
+                'dealId'    => (int)$request['CRM_DEAL_ID'],
+                'stepIndex' => 3,
+                'message'   => 'Hồ sơ đã được ký hợp đồng dịch vụ trước đó.',
+            ];
+        }
+
+        if ((string)($request['STATUS'] ?? '') === 'CONTRACT_SIGNED') {
+            return [
+                'status'    => 'success',
+                'stepIndex' => 3,
+                'message'   => 'Hồ sơ đã được bạn xác nhận đồng ý ký kết hợp đồng trước đó.',
             ];
         }
 
@@ -273,130 +288,213 @@ class Request extends Controller
             }
         }
 
+        $leadStatusId = (string)($lead['STATUS_ID'] ?? 'NEW');
         $fee = (float)($lead['OPPORTUNITY'] ?? 0);
         if ($fee <= 0 && !empty($lead['UF_ESTIMATED_FEE'])) {
             $fee = (float)$lead['UF_ESTIMATED_FEE'];
         }
 
-        if (!$isApproved && $fee <= 0) {
+        if (!$isApproved && !in_array($leadStatusId, ['PROPOSAL_SENT', 'APPROVED', 'PROCESSED'], true)) {
             $this->addError(new Error('Hồ sơ chưa có dự toán chi phí được phê duyệt. Vui lòng chờ phản hồi báo giá từ kiểm toán viên.'));
             return null;
         }
 
-        // Tìm tài khoản Senior (Trưởng nhóm kiểm toán) để phân công
-        $seniorUser = \Bitrix\Main\UserTable::getList([
-            'filter' => ['=LOGIN' => 'senior', '=ACTIVE' => 'Y'],
-            'select' => ['ID', 'LOGIN'],
-        ])->fetch();
-        $seniorId = $seniorUser ? (int)$seniorUser['ID'] : 6;
-
-        $baseCurrency = 'USD';
-        if (class_exists('\CCrmCurrency')) {
-            $baseCurrency = \CCrmCurrency::GetBaseCurrencyID() ?: 'USD';
+        if ($fee <= 0) {
+            $this->addError(new Error('Chưa có thông tin dự toán phí dịch vụ hợp lệ để ký hợp đồng.'));
+            return null;
         }
 
-        if (class_exists('\Bitrix\Crm\Category\Entity\DealCategoryTable')) {
-            \Bitrix\Crm\Category\Entity\DealCategoryTable::cleanCache();
-        }
+        // Cập nhật trạng thái trong aasc_audit_request sang CONTRACT_SIGNED (người dùng đã đồng ý ký)
+        AuditRequestTable::update($requestId, [
+            'STATUS' => 'CONTRACT_SIGNED',
+        ]);
 
-        // Tạo Deal trong Category 1: Quy trình Kiểm toán AASC
-        $dealFields = [
-            'TITLE'               => 'Hợp đồng kiểm toán: ' . ($request['COMPANY_NAME'] ?? ''),
-            'CATEGORY_ID'         => 1,
-            'STAGE_ID'            => 'C1:PREPARATION',
-            'OPENED'              => 'Y',
-            'ASSIGNED_BY_ID'      => $seniorId,
-            'OPPORTUNITY'         => $fee,
-            'CURRENCY_ID'         => 'VND',
-            'ACCOUNT_CURRENCY_ID' => 'VND',
-            'EXCH_RATE'           => 1.0,
-            'OPPORTUNITY_ACCOUNT' => $fee,
-            'COMPANY_TITLE'       => $request['COMPANY_NAME'] ?? '',
-            'COMMENTS'            => 'Mã yêu cầu: #' . $requestId . ' | MST: ' . ($request['TAX_CODE'] ?? '') . ' | Doanh thu: ' . number_format((float)($request['ANNUAL_REVENUE'] ?? 0)) . ' VNĐ',
-            'LEAD_ID'             => $leadId,
-            'IS_PORTAL_SIGN'      => true,
-        ];
-
-        \Aasc\Audit\Handler\LeadApprovalHandler::$isPortalSign = true;
-        try {
-            $dealObj = new \CCrmDeal(false);
-            $dealId = $dealObj->Add($dealFields, true, ['CURRENT_USER' => 1, 'CATEGORY_ID' => 1]);
-
-            if (!$dealId) {
-                $this->addError(new Error('Không thể khởi tạo Deal kiểm toán: ' . $dealObj->LAST_ERROR));
-                return null;
-            }
-
-            // Cập nhật CRM_DEAL_ID và trạng thái vào aasc_audit_request
-            AuditRequestTable::update($requestId, [
-                'CRM_DEAL_ID' => (int)$dealId,
-                'STATUS'      => 'C1:PREPARATION',
-            ]);
-
-            // Cập nhật trạng thái Lead thành CONVERTED
-            $leadObj = new \CCrmLead(false);
-            $leadUpdate = [
-                'STATUS_ID'      => 'CONVERTED',
-                'IS_PORTAL_SIGN' => true,
-            ];
-            $leadObj->Update($leadId, $leadUpdate, true, ['CURRENT_USER' => 1]);
-        } finally {
-            \Aasc\Audit\Handler\LeadApprovalHandler::$isPortalSign = false;
-        }
-
-        // Ghi nhận vào Timeline
+        // Ghi nhận vào Timeline của Lead trong CRM
         \Bitrix\Crm\Timeline\CommentEntry::create([
-            'TEXT'      => 'Khách hàng đã ký hợp đồng kiểm toán dịch vụ trên Cổng thông tin. Hồ sơ được chuyển sang Deal #' . $dealId . ' và bàn giao cho Trưởng nhóm kiểm toán (' . ($seniorUser['LOGIN'] ?? 'senior') . ') lập kế hoạch thực địa (VSA 300).',
+            'TEXT'      => 'Khách hàng (' . ($request['COMPANY_NAME'] ?? '') . ') đã xác nhận chấp thuận dự toán phí (' . number_format($fee, 0, ',', '.') . ' VNĐ) và đồng ý ký kết hợp đồng trên Cổng thông tin (Portal). Đề nghị Trưởng phòng (Manager) và Ban Giám đốc (Director) vào CRM chuyển đổi hồ sơ sang Hợp đồng (Deal).',
             'AUTHOR_ID' => $currentUserId,
             'BINDINGS'  => [
                 ['ENTITY_TYPE_ID' => \CCrmOwnerType::Lead, 'ENTITY_ID' => $leadId],
-                ['ENTITY_TYPE_ID' => \CCrmOwnerType::Deal, 'ENTITY_ID' => $dealId],
             ]
         ]);
 
-        // Gửi thông báo cho Senior và Manager
+        // Gửi thông báo chuông nội bộ cho Director (user 4) và Manager (user 5)
         if (\Bitrix\Main\Loader::includeModule('im')) {
-            $msg = 'Khách hàng (' . ($request['COMPANY_NAME'] ?? '') . ') đã hoàn tất ký hợp đồng dịch vụ cho hồ sơ #' . $requestId . '. Deal #' . $dealId . ' đã được giao cho bạn lập kế hoạch kiểm toán (VSA 300).';
+            $dirUser = \Bitrix\Main\UserTable::getList(['filter' => ['=LOGIN' => 'director', '=ACTIVE' => 'Y'], 'select' => ['ID']])->fetch();
+            $directorId = $dirUser ? (int)$dirUser['ID'] : 4;
+
+            $mgrUser = \Bitrix\Main\UserTable::getList(['filter' => ['=LOGIN' => 'manager', '=ACTIVE' => 'Y'], 'select' => ['ID']])->fetch();
+            $managerId = $mgrUser ? (int)$mgrUser['ID'] : (int)($lead['ASSIGNED_BY_ID'] ?? 5);
+
+            $msg = 'Khách hàng (' . ($request['COMPANY_NAME'] ?? '') . ') đã đồng ý ký hợp đồng kiểm toán cho hồ sơ #' . $requestId . ' (Lead #' . $leadId . '). Bạn có thể vào CRM để chuyển đổi hồ sơ sang Hợp đồng (Deal).';
+
+            // Gửi tới Director
             \CIMNotify::Add([
-                'TO_USER_ID'     => $seniorId,
+                'TO_USER_ID'     => $directorId,
                 'FROM_USER_ID'   => $currentUserId,
                 'NOTIFY_TYPE'    => IM_NOTIFY_SYSTEM,
                 'NOTIFY_MODULE'  => 'aasc.audit',
-                'NOTIFY_TAG'     => 'AASC|CONTRACT|' . $requestId,
+                'NOTIFY_TAG'     => 'AASC|CONTRACT_DIR|' . $requestId . '|' . time(),
                 'NOTIFY_MESSAGE' => $msg,
+                'NOTIFY_LINK'    => '/crm/lead/details/' . $leadId . '/',
             ]);
 
-            $managerId = (int)($lead['ASSIGNED_BY_ID'] ?? 5);
-            if ($managerId > 0 && $managerId !== $seniorId) {
+            // Gửi tới Manager
+            if ($managerId > 0 && $managerId !== $directorId) {
                 \CIMNotify::Add([
                     'TO_USER_ID'     => $managerId,
                     'FROM_USER_ID'   => $currentUserId,
                     'NOTIFY_TYPE'    => IM_NOTIFY_SYSTEM,
                     'NOTIFY_MODULE'  => 'aasc.audit',
-                    'NOTIFY_TAG'     => 'AASC|CONTRACT_MGR|' . $requestId,
-                    'NOTIFY_MESSAGE' => 'Hồ sơ #' . $requestId . ' (' . ($request['COMPANY_NAME'] ?? '') . ') đã được khách hàng ký hợp đồng thành công. Deal #' . $dealId . ' đã chuyển cho Trưởng nhóm lập kế hoạch.',
+                    'NOTIFY_TAG'     => 'AASC|CONTRACT_MGR|' . $requestId . '|' . time(),
+                    'NOTIFY_MESSAGE' => $msg,
+                    'NOTIFY_LINK'    => '/crm/lead/details/' . $leadId . '/',
                 ]);
             }
         }
 
-        // Phát sóng Push & Pull cập nhật thời gian thực cho Portal (Step 3)
+        // Phát sóng Push & Pull cập nhật thời gian thực cho Portal (Step 3: Người dùng đồng ý ký)
         if (\Bitrix\Main\Loader::includeModule('pull')) {
             \CPullWatch::AddToStack('AASC_AUDIT_REQUEST_' . $requestId, [
                 'module_id' => 'aasc.audit',
                 'command'   => 'request_status_updated',
                 'params'    => [
                     'requestId' => $requestId,
-                    'dealId'    => $dealId,
-                    'statusId'  => 'C1:PREPARATION',
+                    'leadId'    => $leadId,
+                    'statusId'  => 'CONTRACT_SIGNED',
                     'stepIndex' => 3,
                 ]
             ]);
         }
 
         return [
-            'status'  => 'success',
-            'dealId'  => (int)$dealId,
-            'message' => 'Hợp đồng kiểm toán đã được ký kết thành công. Nhóm kiểm toán AASC đang bắt đầu lập kế hoạch thực địa.',
+            'status'    => 'success',
+            'requestId' => $requestId,
+            'stepIndex' => 3,
+            'message'   => 'Bạn đã xác nhận đồng ý ký kết hợp đồng kiểm toán thành công. Thông tin đã được gửi tới Ban Giám đốc và Trưởng phòng kiểm toán AASC.',
+        ];
+    }
+
+    /**
+     * Action lấy trạng thái thời gian thực của hồ sơ (Real-time polling & sync)
+     * URL: /bitrix/services/main/ajax.php?action=aasc:audit.controller.request.getStatus&requestId=123
+     */
+    public function getStatusAction(int $requestId = 0): ?array
+    {
+        if ($requestId <= 0) {
+            $requestId = (int)$this->getRequest()->get('requestId');
+        }
+
+        if ($requestId <= 0) {
+            $this->addError(new Error('Mã hồ sơ không hợp lệ.'));
+            return null;
+        }
+
+        $request = AuditRequestTable::getById($requestId)->fetch();
+        if (!$request) {
+            $this->addError(new Error('Không tìm thấy thông tin hồ sơ #' . $requestId));
+            return null;
+        }
+
+        global $USER;
+        $currentUserId = (int)$USER->GetID();
+        $isOwner = ((int)$request['USER_ID'] === $currentUserId);
+        $isInternal = \Aasc\Audit\Handler\PortalAccessHandler::isInternalUser($currentUserId);
+
+        if (!$isOwner && !$isInternal) {
+            $this->addError(new Error('Bạn không có quyền xem thông tin hồ sơ này.'));
+            return null;
+        }
+
+        $leadId = (int)($request['CRM_LEAD_ID'] ?? 0);
+        $dealId = (int)($request['CRM_DEAL_ID'] ?? 0);
+        $requestStatus = (string)($request['STATUS'] ?? 'NEW');
+
+        $leadStatusId = 'NEW';
+        $estimatedFee = 0.0;
+        $isQuoteApproved = false;
+        $dealStageId = '';
+
+        if (\Bitrix\Main\Loader::includeModule('crm')) {
+            if ($leadId > 0) {
+                $lead = \CCrmLead::GetByID($leadId, false);
+                if ($lead) {
+                    $leadStatusId = (string)($lead['STATUS_ID'] ?? 'NEW');
+                    $estimatedFee = (float)($lead['OPPORTUNITY'] ?? 0);
+                    if ($estimatedFee <= 0 && !empty($lead['UF_ESTIMATED_FEE'])) {
+                        $estimatedFee = (float)$lead['UF_ESTIMATED_FEE'];
+                    }
+
+                    global $USER_FIELD_MANAGER;
+                    $statusVal = $USER_FIELD_MANAGER->GetUserFieldValue("CRM_LEAD", "UF_APPROVAL_STATUS", $leadId);
+                    if (!empty($statusVal)) {
+                        if (is_numeric($statusVal)) {
+                            $enumRow = \CUserFieldEnum::GetList([], ["ID" => (int)$statusVal])->Fetch();
+                            $isQuoteApproved = ($enumRow && $enumRow["XML_ID"] === "APPROVED");
+                        } else {
+                            $isQuoteApproved = ((string)$statusVal === "APPROVED");
+                        }
+                    }
+                }
+            }
+
+            if ($dealId > 0) {
+                $deal = \CCrmDeal::GetByID($dealId, false);
+                if ($deal) {
+                    $dealStageId = (string)($deal['STAGE_ID'] ?? '');
+                    if (!empty($deal['OPPORTUNITY']) && (float)$deal['OPPORTUNITY'] > 0) {
+                        $estimatedFee = (float)$deal['OPPORTUNITY'];
+                    }
+                }
+            }
+        }
+
+        // 5. Xác định bước tiến trình (Current Step: 1 -> 6)
+        // Mức 1: Tiếp nhận hồ sơ (NEW, IN_PROCESS)
+        // Mức 2: Thẩm định & Báo giá sẵn sàng (manager nhập tiền + sang status PROCESSED/APPROVED)
+        // Mức 3: Người dùng đồng ý ký hợp đồng (CONTRACT_SIGNED hoặc Deal C1:PREPARATION/C1:NEW)
+        // Mức 4: Kiểm toán thực địa (C1:FIELDWORK)
+        // Mức 5: Soát xét báo cáo (C1:REVIEW_MANAGER, C1:REVIEW_DIRECTOR)
+        // Mức 6: Báo cáo chính thức (C1:WON)
+        $currentStep = 1;
+        if ($dealId > 0 && !empty($dealStageId)) {
+            if ($dealStageId === 'C1:FIELDWORK' || $dealStageId === 'EXECUTING') {
+                $currentStep = 4;
+            } elseif (in_array($dealStageId, ['C1:REVIEW_MANAGER', 'C1:REVIEW_DIRECTOR'], true)) {
+                $currentStep = 5;
+            } elseif ($dealStageId === 'C1:WON' || $dealStageId === 'WON') {
+                $currentStep = 6;
+            } else {
+                $currentStep = 3;
+            }
+        } else {
+            if ($requestStatus === 'CONTRACT_SIGNED') {
+                $currentStep = 3;
+            } elseif ($isQuoteApproved || in_array($leadStatusId, ['PROPOSAL_SENT', 'APPROVED', 'PROCESSED'], true)) {
+                $currentStep = 2;
+            } else {
+                $currentStep = 1;
+            }
+        }
+
+        $isContractSigned = ($requestStatus === 'CONTRACT_SIGNED' || $dealId > 0);
+        $canSignContract = (!$isContractSigned && ($isQuoteApproved || in_array($leadStatusId, ['PROPOSAL_SENT', 'APPROVED', 'PROCESSED'], true)) && $estimatedFee > 0);
+
+        return [
+            'status'                => 'success',
+            'requestId'             => $requestId,
+            'currentStep'           => $currentStep,
+            'requestStatus'         => $requestStatus,
+            'leadStatusId'          => $leadStatusId,
+            'dealStageId'           => $dealStageId,
+            'dealId'                => $dealId,
+            'estimatedFee'          => $estimatedFee,
+            'estimatedFeeFormatted' => number_format($estimatedFee, 0, ',', '.') . ' VNĐ',
+            'isQuoteApproved'       => $isQuoteApproved,
+            'canSignContract'       => $canSignContract,
+            'isContractSigned'      => $isContractSigned,
+            'hasFinalReport'        => ($currentStep === 6),
+            'reportUrl'             => '/portal/my-requests/' . $requestId . '/report/',
         ];
     }
 }

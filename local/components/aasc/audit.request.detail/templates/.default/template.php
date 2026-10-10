@@ -112,6 +112,18 @@ $progressPercent = min(100, max(0, round(($currentStep - 1) / 5 * 100)));
                 </div>
             </div>
         </div>
+    <?php elseif (!empty($arResult['IS_CONTRACT_SIGNED'])): ?>
+        <!-- Khung xác nhận khách hàng đã ký hợp đồng -->
+        <div class="quotation-card" style="border-left-color: #38a169; background: #f0fff4;" id="contractSignedCard">
+            <div class="quotation-icon" style="color: #38a169;">&#9989;</div>
+            <div class="quotation-info">
+                <div class="quotation-badge" style="background: #c6f6d5; color: #22543d;">Đã xác nhận ký hợp đồng dịch vụ</div>
+                <h3 class="quotation-title" style="color: #22543d;">Đã Chấp Thuận Báo Giá & Ký Kết Hợp Đồng</h3>
+                <p class="quotation-desc" style="color: #276749;">
+                    Quý khách đã hoàn tất việc xác nhận đồng ý dự toán phí dịch vụ và ký kết hợp đồng kiểm toán. Đội ngũ Ban Giám đốc và Trưởng phòng kiểm toán AASC đang tiếp nhận, lập kế hoạch thực địa (VSA 300) và triển khai các thủ tục tiếp theo.
+                </p>
+            </div>
+        </div>
     <?php endif; ?>
 
     <!-- Lưới thông tin chi tiết và Timeline trao đổi -->
@@ -324,9 +336,59 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // 3. Tích hợp Bitrix Push & Pull thời gian thực qua WebSocket
+    let currentStepState = <?= $currentStep ?>;
+
+    // 3. Tự động đồng bộ và cập nhật giao diện thời gian thực (Real-time Live Sync)
+    function applyLiveUpdate(data) {
+        if (!data) return;
+
+        const newStep = parseInt(data.currentStep);
+        if (newStep >= 1 && newStep <= 6 && newStep !== currentStepState) {
+            currentStepState = newStep;
+            updateStepperUI(newStep);
+
+            // Tự động tải lại trang nếu chuyển sang các trạng thái có thay đổi lớn trên giao diện
+            // (Bước 2: Báo giá xuất hiện, Bước 3: Đã ký hợp đồng, Bước 6: Xuất hiện nút tải báo cáo)
+            const quotationCard = document.getElementById('quotationActionCard');
+            const signedCard = document.getElementById('contractSignedCard');
+            const reportCard = document.querySelector('.report-delivery-card');
+
+            if (newStep === 2 && !quotationCard) {
+                setTimeout(() => { window.location.reload(); }, 600);
+            } else if (newStep === 3 && !signedCard) {
+                setTimeout(() => { window.location.reload(); }, 600);
+            } else if (newStep === 6 && !reportCard) {
+                setTimeout(() => { window.location.reload(); }, 600);
+            }
+        }
+
+        // Cập nhật giá trị phí dịch vụ nếu có thay đổi
+        if (data.estimatedFeeFormatted && data.estimatedFee > 0) {
+            const feeRows = document.querySelectorAll('.info-value.text-primary');
+            feeRows.forEach(el => {
+                if (el.textContent !== data.estimatedFeeFormatted) {
+                    el.textContent = data.estimatedFeeFormatted;
+                }
+            });
+        }
+    }
+
+    // Polling định kỳ mỗi 3.5 giây đảm bảo realtime 100% không bị phụ thuộc vào websocket drop
+    function fetchLiveStatus() {
+        fetch('/bitrix/services/main/ajax.php?action=aasc:audit.controller.request.getStatus&requestId=' + requestId)
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === 'success' && res.data) {
+                    applyLiveUpdate(res.data);
+                }
+            })
+            .catch(() => {});
+    }
+
+    setInterval(fetchLiveStatus, 3500);
+
+    // Tích hợp Bitrix Push & Pull thời gian thực qua WebSocket nếu khả dụng
     if (typeof BX !== 'undefined' && BX.PULL) {
-        // Đăng ký mở rộng kênh theo dõi hồ sơ này
         BX.PULL.extendWatch('AASC_AUDIT_REQUEST_' + requestId);
 
         BX.PULL.subscribe({
@@ -336,13 +398,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // Trường hợp 1: Nhận sự kiện chuyển bước trạng thái kiểm toán
                 if (data.command === 'request_status_updated' && parseInt(data.params.requestId) === requestId) {
-                    const newStep = parseInt(data.params.stepIndex);
-                    if (newStep >= 1 && newStep <= 6) {
-                        updateStepperUI(newStep);
-                        if (newStep === 3 || newStep === 6) {
-                            setTimeout(() => { window.location.reload(); }, 1200);
-                        }
-                    }
+                    fetchLiveStatus();
                 }
 
                 // Trường hợp 2: Nhận tin nhắn trao đổi mới từ CRM Timeline
@@ -357,7 +413,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Cập nhật giao diện thanh Stepper khi nhận WebSocket (6 bước)
+    // Cập nhật giao diện thanh Stepper khi nhận trạng thái mới (6 bước)
     function updateStepperUI(currentStep) {
         const percent = Math.min(100, Math.max(0, Math.round((currentStep - 1) / 5 * 100)));
         const progressBar = document.getElementById('stepperProgressBar');

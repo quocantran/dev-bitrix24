@@ -51,6 +51,13 @@ $eventManager->addEventHandler(
     ['\Aasc\Audit\Handler\LeadApprovalHandler', 'onBeforeDealAdd']
 );
 
+// Đồng bộ khi DEAL được khởi tạo từ Lead trong CRM
+$eventManager->addEventHandler(
+    'crm',
+    'OnAfterCrmDealAdd',
+    ['\Aasc\Audit\Handler\LeadApprovalHandler', 'onAfterDealAdd']
+);
+
 // Bắn thông báo nội bộ và đẩy real-time Push server khi có Lead mới
 $eventManager->addEventHandler(
     'crm',

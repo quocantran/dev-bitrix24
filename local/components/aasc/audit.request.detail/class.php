@@ -247,14 +247,22 @@ class AascAuditRequestDetailComponent extends \CBitrixComponent
         $this->arResult['IS_QUOTE_APPROVED'] = $isQuoteApproved;
 
         // 5. Xác định bước tiến trình (Current Step: 1 -> 6)
+        // Mức 1: Tiếp nhận hồ sơ (NEW, IN_PROCESS)
+        // Mức 2: Thẩm định & Báo giá sẵn sàng (manager nhập tiền + sang status PROCESSED/APPROVED)
+        // Mức 3: Người dùng đồng ý ký hợp đồng (CONTRACT_SIGNED hoặc Deal C1:PREPARATION/C1:NEW)
+        // Mức 4: Kiểm toán thực địa (C1:FIELDWORK)
+        // Mức 5: Soát xét báo cáo (C1:REVIEW_MANAGER, C1:REVIEW_DIRECTOR)
+        // Mức 6: Báo cáo chính thức (C1:WON)
         $currentStep = 1;
+        $requestStatus = (string)($request['STATUS'] ?? 'NEW');
+
         if ($dealId > 0 && $dealData) {
             $dealStage = (string)($dealData['STAGE_ID'] ?? '');
-            if ($dealStage === 'C1:FIELDWORK') {
+            if ($dealStage === 'C1:FIELDWORK' || $dealStage === 'EXECUTING') {
                 $currentStep = 4;
             } elseif (in_array($dealStage, ['C1:REVIEW_MANAGER', 'C1:REVIEW_DIRECTOR'], true)) {
                 $currentStep = 5;
-            } elseif ($dealStage === 'C1:WON') {
+            } elseif ($dealStage === 'C1:WON' || $dealStage === 'WON') {
                 $currentStep = 6;
             } else {
                 // C1:NEW, C1:PREPARATION
@@ -262,22 +270,24 @@ class AascAuditRequestDetailComponent extends \CBitrixComponent
             }
         } else {
             // Còn ở giai đoạn Lead
-            if (in_array($leadStatusId, ['IN_PROCESS', 'PROPOSAL_SENT', 'APPROVED', 'PROCESSED'])) {
-                $currentStep = 2;
-            } elseif (in_array($leadStatusId, ['CONVERTED', 'WON', 'COMPLETED'])) {
+            if ($requestStatus === 'CONTRACT_SIGNED') {
                 $currentStep = 3;
+            } elseif ($isQuoteApproved || in_array($leadStatusId, ['PROPOSAL_SENT', 'APPROVED', 'PROCESSED'], true)) {
+                $currentStep = 2;
             } else {
                 $currentStep = 1;
             }
         }
 
         // Kiểm tra điều kiện cho phép khách hàng ký hợp đồng
+        $isContractSigned = ($requestStatus === 'CONTRACT_SIGNED' || $dealId > 0);
         $canSignContract = false;
-        if ($dealId <= 0 && ($isQuoteApproved || in_array($leadStatusId, ['PROPOSAL_SENT', 'APPROVED'], true)) && $estimatedFee > 0) {
+        if (!$isContractSigned && ($isQuoteApproved || in_array($leadStatusId, ['PROPOSAL_SENT', 'APPROVED', 'PROCESSED'], true)) && $estimatedFee > 0) {
             $canSignContract = true;
         }
 
         $this->arResult['CAN_SIGN_CONTRACT'] = $canSignContract;
+        $this->arResult['IS_CONTRACT_SIGNED'] = $isContractSigned;
         $this->arResult['CURRENT_STEP'] = $currentStep;
         $this->arResult['WORKFLOW_STEPS'] = self::WORKFLOW_STEPS;
         $this->arResult['HAS_FINAL_REPORT'] = ($currentStep === 6);
@@ -288,6 +298,10 @@ class AascAuditRequestDetailComponent extends \CBitrixComponent
 
         // 7. Đăng ký kênh Push & Pull theo dõi thời gian thực
         if (Loader::includeModule('pull')) {
+            \CJSCore::Init(['pull', 'pull.client']);
+            if (class_exists('\Bitrix\Main\UI\Extension')) {
+                \Bitrix\Main\UI\Extension::load(['pull.client', 'ui.notification']);
+            }
             \CPullWatch::Add($currentUserId, 'AASC_AUDIT_REQUEST_' . $requestId);
         }
 
