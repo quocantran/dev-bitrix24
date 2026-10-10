@@ -1,0 +1,252 @@
+/**
+ * Stylesheet cho trang Danh Sách Hồ Sơ Kiểm Toán (/portal/my-requests/)
+ */
+
+.requests-container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1.5rem 0;
+}
+
+.requests-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.requests-title {
+    color: #1a365d;
+    font-size: 1.6rem;
+    margin: 0 0 0.25rem 0;
+    font-weight: 700;
+}
+
+.requests-subtitle {
+    color: #4a5568;
+    margin: 0;
+    font-size: 0.95rem;
+}
+
+.btn-create-request {
+    background: #1a365d;
+    color: #ffffff;
+    padding: 0.65rem 1.25rem;
+    border-radius: 4px;
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 0.95rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background-color 0.2s ease;
+}
+
+.btn-create-request:hover {
+    background: #2a4365;
+    text-decoration: none;
+    color: #ffffff;
+}
+
+/* Khung hiển thị rỗng */
+.requests-empty-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 3rem 2rem;
+    text-align: center;
+}
+
+.requests-empty-text {
+    color: #718096;
+    font-size: 1.05rem;
+    margin-bottom: 1.5rem;
+}
+
+.btn-first-request {
+    background: #ed8936;
+    color: #ffffff;
+    padding: 0.75rem 1.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 1rem;
+    display: inline-block;
+    transition: background-color 0.2s ease;
+}
+
+.btn-first-request:hover {
+    background: #dd6b20;
+    text-decoration: none;
+    color: #ffffff;
+}
+
+/* Bảng danh sách hồ sơ */
+.requests-table-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.requests-table-scroll {
+    overflow-x: auto;
+}
+
+.requests-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 0.9rem;
+}
+
+.requests-table-head {
+    background: #edf2f7;
+    color: #2d3748;
+    border-bottom: 2px solid #cbd5e0;
+}
+
+.requests-th {
+    padding: 0.85rem 1rem;
+    font-weight: 600;
+}
+
+.requests-row {
+    border-bottom: 1px solid #e2e8f0;
+    transition: background-color 0.15s ease;
+}
+
+.requests-row:hover {
+    background-color: #f8fafc;
+}
+
+.requests-td {
+    padding: 1rem;
+    vertical-align: middle;
+}
+
+.requests-id-col {
+    font-weight: 700;
+    color: #1a365d;
+}
+
+.requests-company-name {
+    font-weight: 600;
+    color: #2d3748;
+}
+
+.requests-tax-code {
+    font-size: 0.8rem;
+    color: #718096;
+}
+
+.requests-fee-col {
+    font-family: monospace;
+    color: #2d3748;
+    font-weight: 600;
+}
+
+.requests-fee-waiting {
+    color: #a0aec0;
+    font-weight: normal;
+    font-style: italic;
+    font-family: inherit;
+}
+
+.requests-date-col {
+    color: #718096;
+    font-size: 0.85rem;
+}
+
+.requests-crm-col {
+    font-family: monospace;
+    color: #4a5568;
+    font-size: 0.85rem;
+}
+
+.requests-crm-deal {
+    color: #2b6cb0;
+    font-weight: 600;
+}
+
+/* Badge trạng thái hồ sơ */
+.badge-status {
+    padding: 0.25rem 0.6rem;
+    border-radius: 9999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    display: inline-block;
+    white-space: nowrap;
+}
+
+.badge-status-won {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.badge-status-review {
+    background: #f3e8ff;
+    color: #6b21a8;
+}
+
+.badge-status-fieldwork {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+.badge-status-preparation {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.badge-status-signed {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.badge-status-quote {
+    background: #c6f6d5;
+    color: #22543d;
+}
+
+.badge-status-process {
+    background: #feebc8;
+    color: #c05621;
+}
+
+.badge-status-rejected {
+    background: #fed7d7;
+    color: #9b2c2c;
+}
+
+.badge-status-default {
+    background: #ebf8ff;
+    color: #2b6cb0;
+}
+
+.btn-view-detail {
+    background: #2b6cb0;
+    color: #ffffff;
+    padding: 0.35rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-block;
+    transition: background-color 0.15s ease;
+    white-space: nowrap;
+}
+
+.btn-view-detail:hover {
+    background: #2c5282;
+    text-decoration: none;
+    color: #ffffff;
+}
+
+.text-center {
+    text-align: center;
+}
+

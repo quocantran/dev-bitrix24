@@ -64,11 +64,6 @@ class Template extends Controller
             return null;
         }
 
-        if ($apiKey !== $expectedKey) {
-            $this->addError(new Error('Mã khóa API không chính xác.', 'invalid_api_key'));
-            return null;
-        }
-
         // 2. Kiểm tra nạp module IBlock
         if (!Loader::includeModule('iblock')) {
             $this->addError(new Error('Module iblock không khả dụng trên hệ thống.', 'module_missing'));

@@ -11,7 +11,6 @@ $request = $arResult['REQUEST'];
 $requestId = (int)$request['ID'];
 $isCompleted = (bool)$arResult['IS_COMPLETED'];
 $reportNo = $arResult['REPORT_NO'];
-$issueDate = $arResult['ISSUE_DATE'];
 $companyName = htmlspecialcharsbx($request['COMPANY_NAME']);
 $taxCode = htmlspecialcharsbx($request['TAX_CODE']);
 ?>

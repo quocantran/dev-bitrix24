@@ -1,5 +1,8 @@
 <?php
-$_SERVER["DOCUMENT_ROOT"] = "/var/www/html";
+if (empty($_SERVER["DOCUMENT_ROOT"])) {
+    $docRoot = dirname(__DIR__, 3);
+    $_SERVER["DOCUMENT_ROOT"] = file_exists($docRoot . "/bitrix/modules/main/include/prolog_before.php") ? $docRoot : "/var/www/html";
+}
 define("NO_KEEP_STATISTIC", true);
 define("NOT_CHECK_PERMISSIONS", true);
 

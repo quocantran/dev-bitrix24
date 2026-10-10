@@ -3,7 +3,10 @@
  * Script nạp dữ liệu nền tảng (Seeding Platform Data)
  * Khởi tạo: Table aasc_audit_request, Departments, Users, User Fields, IBlock Services
  */
-$_SERVER["DOCUMENT_ROOT"] = "/var/www/html";
+if (empty($_SERVER["DOCUMENT_ROOT"])) {
+    $docRoot = dirname(__DIR__, 3);
+    $_SERVER["DOCUMENT_ROOT"] = file_exists($docRoot . "/bitrix/modules/main/include/prolog_before.php") ? $docRoot : "/var/www/html";
+}
 define("NO_KEEP_STATISTIC", true);
 define("NOT_CHECK_PERMISSIONS", true);
 define("BX_NO_ACCELERATOR_RESET", true);
@@ -25,6 +28,7 @@ echo "=== BAT DAU KHOI TAO DU LIEU NEN TANG AASC ===\n";
 echo "[1/5] Kiem tra va tao bang aasc_audit_request...\n";
 $sqlTable = "CREATE TABLE IF NOT EXISTS aasc_audit_request (
     ID INT AUTO_INCREMENT PRIMARY KEY,
+    USER_ID INT DEFAULT 0,
     COMPANY_NAME VARCHAR(255) NOT NULL,
     TAX_CODE VARCHAR(20) NOT NULL,
     ANNUAL_REVENUE DECIMAL(18,2) DEFAULT 0.00,
@@ -35,12 +39,23 @@ $sqlTable = "CREATE TABLE IF NOT EXISTS aasc_audit_request (
     STATUS VARCHAR(50) DEFAULT 'NEW',
     REMINDER_SENT CHAR(1) DEFAULT 'N',
     CRM_LEAD_ID INT DEFAULT 0,
+    CRM_DEAL_ID INT DEFAULT 0,
     CREATED_AT DATETIME NOT NULL,
     UPDATED_AT DATETIME NULL,
+    INDEX idx_user_id (USER_ID),
     INDEX idx_status_created (STATUS, CREATED_AT),
     INDEX idx_tax_code (TAX_CODE)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
 $connection->queryExecute($sqlTable);
+
+// Đảm bảo các cột mới tồn tại nếu bảng đã được khởi tạo trước đó
+try {
+    $connection->queryExecute("ALTER TABLE aasc_audit_request ADD COLUMN USER_ID INT DEFAULT 0 AFTER ID");
+} catch (\Throwable $e) {}
+try {
+    $connection->queryExecute("ALTER TABLE aasc_audit_request ADD COLUMN CRM_DEAL_ID INT DEFAULT 0 AFTER CRM_LEAD_ID");
+} catch (\Throwable $e) {}
+
 echo " -> Bang aasc_audit_request da san sang.\n";
 
 // 2. KHOI TAO PHONG BAN (DEPARTMENTS) TRONG IBLOCK STRUCTURE

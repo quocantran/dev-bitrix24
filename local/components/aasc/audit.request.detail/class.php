@@ -2,11 +2,8 @@
 if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED !== true) die();
 
 use Bitrix\Main\Loader;
-use Bitrix\Main\Localization\Loc;
 use Aasc\Audit\Model\AuditRequestTable;
 use Aasc\Audit\Handler\PortalAccessHandler;
-
-Loc::loadMessages(__FILE__);
 
 class AascAuditRequestDetailComponent extends \CBitrixComponent
 {

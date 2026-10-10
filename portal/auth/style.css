@@ -1,0 +1,208 @@
+/**
+ * Stylesheet cho trang Đăng Nhập & Đăng Ký Cổng Thông Tin AASC
+ */
+
+.auth-container {
+    max-width: 520px;
+    margin: 1rem auto 3rem auto;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+}
+
+/* Tabs chuyển đổi chế độ */
+.auth-tabs {
+    display: flex;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.auth-tab-btn {
+    flex: 1;
+    padding: 1rem;
+    border: none;
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.auth-tab-btn.active {
+    background: #ffffff;
+    color: #1a365d;
+    border-bottom: 3px solid #1a365d;
+}
+
+.auth-tab-btn:not(.active) {
+    background: #f8fafc;
+    color: #718096;
+    border-bottom: 3px solid transparent;
+}
+
+.auth-body {
+    padding: 2rem;
+}
+
+/* Khối thông báo hệ thống */
+.auth-notice-loggedout {
+    background: #ebf8ff;
+    border: 1px solid #bee3f8;
+    color: #2b6cb0;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+}
+
+.auth-notice-backurl {
+    background: #fffaf0;
+    border: 1px solid #feebc8;
+    color: #7b341e;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+}
+
+.auth-alert {
+    display: none;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.auth-alert.is-visible {
+    display: block;
+}
+
+.auth-form.is-hidden {
+    display: none;
+}
+
+.auth-form.is-active {
+    display: block;
+}
+
+
+.auth-alert.success {
+    background: #c6f6d5;
+    color: #22543d;
+    border: 1px solid #9ae6b4;
+}
+
+.auth-alert.error {
+    background: #fed7d7;
+    color: #742a2a;
+    border: 1px solid #feb2b2;
+}
+
+/* Nhóm phần tử biểu mẫu */
+.auth-form-group {
+    margin-bottom: 1.25rem;
+}
+
+.auth-form-group-compact {
+    margin-bottom: 1rem;
+}
+
+.auth-form-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.auth-label {
+    display: block;
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 0.35rem;
+    font-size: 0.9rem;
+}
+
+.auth-label .required {
+    color: #e53e3e;
+}
+
+.auth-input {
+    width: 100%;
+    padding: 0.65rem;
+    border: 1px solid #cbd5e0;
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-size: 0.95rem;
+    color: #2d3748;
+    background-color: #ffffff;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.auth-input:focus {
+    outline: none;
+    border-color: #3182ce;
+    box-shadow: 0 0 0 1px #3182ce;
+}
+
+.auth-remember-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.auth-remember-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: #4a5568;
+    cursor: pointer;
+}
+
+/* Nút bấm hành động */
+.auth-submit-btn {
+    width: 100%;
+    padding: 0.75rem;
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease, opacity 0.2s ease;
+}
+
+.auth-submit-login {
+    background: #1a365d;
+    color: #ffffff;
+}
+
+.auth-submit-login:hover {
+    background: #2a4365;
+}
+
+.auth-submit-register {
+    background: #b7791f;
+    color: #ffffff;
+}
+
+.auth-submit-register:hover {
+    background: #975a16;
+}
+
+.auth-submit-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+    .auth-body {
+        padding: 1.25rem;
+    }
+
+    .auth-form-grid-2 {
+        grid-template-columns: 1fr;
+    }
+}

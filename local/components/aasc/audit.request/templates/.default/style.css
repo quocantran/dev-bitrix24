@@ -1,0 +1,204 @@
+/**
+ * Stylesheet cho Component aasc:audit.request
+ * Cấu trúc Bitrix Component 2.0 template styles
+ */
+
+.audit-request-container {
+    max-width: 760px;
+    margin: 0 auto;
+    background: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    padding: 2rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.audit-request-header {
+    border-bottom: 2px solid #1a365d;
+    padding-bottom: 1rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.audit-request-title {
+    color: #1a365d;
+    font-size: 1.5rem;
+    margin: 0 0 0.5rem 0;
+    font-weight: 700;
+}
+
+.audit-request-subtitle {
+    color: #4a5568;
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.audit-user-badge {
+    background: #ebf8ff;
+    border: 1px solid #bee3f8;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: #2b6cb0;
+}
+
+.audit-user-badge strong {
+    font-weight: 600;
+}
+
+/* Thông báo phản hồi Form Alert */
+.audit-alert {
+    display: none;
+    padding: 1rem;
+    border-radius: 6px;
+    margin-bottom: 1.5rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.audit-alert-success {
+    background: #c6f6d5;
+    color: #22543d;
+    border: 1px solid #9ae6b4;
+}
+
+.audit-alert-error {
+    background: #fed7d7;
+    color: #742a2a;
+    border: 1px solid #feb2b2;
+}
+
+.audit-alert-link {
+    color: #22543d;
+    font-weight: 700;
+    text-decoration: underline;
+    margin-left: 0.5rem;
+}
+
+/* Lưới bố cục Form */
+.audit-form-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.audit-form-grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.audit-form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.audit-form-label {
+    display: block;
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 0.35rem;
+    font-size: 0.9rem;
+}
+
+.audit-form-label .required {
+    color: #e53e3e;
+}
+
+.audit-form-input,
+.audit-form-select {
+    width: 100%;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid #cbd5e0;
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-size: 0.95rem;
+    background-color: #ffffff;
+    color: #2d3748;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.audit-form-input:focus,
+.audit-form-select:focus {
+    outline: none;
+    border-color: #3182ce;
+    box-shadow: 0 0 0 1px #3182ce;
+}
+
+.audit-form-hint {
+    color: #718096;
+    font-size: 0.8rem;
+    margin-top: 0.25rem;
+}
+
+/* Khu vực nút bấm điều hướng */
+.audit-form-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
+
+.audit-back-link {
+    color: #2b6cb0;
+    font-size: 0.9rem;
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
+.audit-back-link:hover {
+    text-decoration: underline;
+    color: #1a365d;
+}
+
+.audit-submit-btn {
+    background: #1a365d;
+    color: #ffffff;
+    padding: 0.75rem 1.75rem;
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease, opacity 0.2s ease;
+}
+
+.audit-submit-btn:hover {
+    background: #2a4365;
+}
+
+.audit-submit-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+/* Đáp ứng màn hình di động */
+@media (max-width: 640px) {
+    .audit-request-container {
+        padding: 1.25rem;
+    }
+
+    .audit-form-grid-2,
+    .audit-form-grid-3 {
+        grid-template-columns: 1fr;
+    }
+
+    .audit-form-actions {
+        flex-direction: column-reverse;
+        align-items: stretch;
+    }
+
+    .audit-submit-btn {
+        width: 100%;
+        text-align: center;
+    }
+}

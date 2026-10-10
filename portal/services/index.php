@@ -1,10 +1,10 @@
 <?php
-require($_SERVER["DOCUMENT_ROOT"]."/bitrix/header.php");
-$APPLICATION->SetTitle("Danh Mục Dịch Vụ Kiểm Toán - AASC");
-
 use Bitrix\Main\Application;
 use Bitrix\Main\Loader;
 use Bitrix\Iblock\ElementTable;
+
+require($_SERVER["DOCUMENT_ROOT"]."/bitrix/header.php");
+$APPLICATION->SetTitle("Danh Mục Dịch Vụ Kiểm Toán - AASC");
 
 Loader::includeModule('iblock');
 
@@ -47,23 +47,23 @@ if ($cache->initCache($cacheTime, $cacheId, $cacheDir)) {
 }
 ?>
 
-<div style="max-width: 960px; margin: 0 auto; padding: 1.5rem 0;">
-    <div style="border-bottom: 2px solid #1a365d; padding-bottom: 1rem; margin-bottom: 2rem;">
-        <h2 style="color: #1a365d; margin: 0 0 0.5rem 0; font-size: 1.75rem;">Dịch Vụ Kiểm Toán Chuyên Nghiệp</h2>
-        <p style="color: #4a5568; margin: 0;">Hãng Kiểm toán AASC cung cấp các giải pháp kiểm toán, quyết toán dự án, thẩm định giá và tư vấn thuế đạt chuẩn mực quốc gia.</p>
+<div class="services-page-container">
+    <div class="services-page-header">
+        <h2 class="services-page-title">Dịch Vụ Kiểm Toán Chuyên Nghiệp</h2>
+        <p class="services-page-desc">Hãng Kiểm toán AASC cung cấp các giải pháp kiểm toán, quyết toán dự án, thẩm định giá và tư vấn thuế đạt chuẩn mực quốc gia.</p>
     </div>
 
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2.5rem;">
+    <div class="services-cards-grid">
         <?php foreach ($services as $item): ?>
-            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                <h3 style="color: #2b6cb0; margin: 0 0 0.75rem 0; font-size: 1.2rem;"><?= htmlspecialcharsbx($item['NAME']) ?></h3>
-                <p style="color: #4a5568; font-size: 0.95rem; line-height: 1.5; margin: 0 0 1rem 0;"><?= htmlspecialcharsbx($item['PREVIEW_TEXT']) ?></p>
-                <a href="/portal/request/?service=<?= (int)$item['ID'] ?>" style="display: inline-block; color: #1a365d; font-weight: 600; text-decoration: none; font-size: 0.9rem;">Yêu cầu báo giá &rarr;</a>
+            <div class="service-card">
+                <h3 class="service-card-title"><?= htmlspecialcharsbx($item['NAME']) ?></h3>
+                <p class="service-card-text"><?= htmlspecialcharsbx($item['PREVIEW_TEXT']) ?></p>
+                <a href="/portal/request/?service=<?= (int)$item['ID'] ?>" class="service-card-link">Yêu cầu báo giá &rarr;</a>
             </div>
         <?php endforeach; ?>
     </div>
 
-    <div style="background: #ebf8ff; border: 1px solid #bee3f8; border-radius: 6px; padding: 1rem; font-size: 0.85rem; color: #2c5282;">
+    <div class="services-cache-info">
         <strong>Thông tin kỹ thuật (Cache Engine):</strong> Dữ liệu trang được quản lý bởi cơ chế <code>Tagged Cache (taggedCache)</code> kết nối bộ đệm Redis. Khi Quản trị viên cập nhật dịch vụ trong IBlock, hệ thống tự động xóa thẻ <code>iblock_id_16</code> để nạp nội dung mới tức thì mà không gây tải cho cơ sở dữ liệu MySQL.
     </div>
 </div>

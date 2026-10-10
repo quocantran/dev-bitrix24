@@ -6,3 +6,229 @@ h2 { color: #2d3748; margin-top: 1.5rem; margin-bottom: 1rem; font-size: 1.4rem;
 h3 { color: #4a5568; margin-top: 1.2rem; margin-bottom: 0.8rem; font-size: 1.2rem; }
 ul, ol { margin-left: 1.5rem; margin-bottom: 1rem; }
 li { margin-bottom: 0.5rem; }
+
+/* Wrapper trang gửi đơn */
+.portal-request-wrapper {
+    padding: 1.5rem 0;
+}
+
+/* Trang chủ Portal (/portal/) */
+.portal-home-container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 2rem 0;
+}
+
+.portal-hero-banner {
+    background: linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%);
+    color: #ffffff;
+    padding: 3rem 2rem;
+    border-radius: 8px;
+    margin-bottom: 2.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.portal-hero-title {
+    font-size: 2.25rem;
+    font-weight: 700;
+    margin: 0 0 1rem 0;
+    color: #ffffff;
+}
+
+.portal-hero-desc {
+    font-size: 1.15rem;
+    line-height: 1.6;
+    margin: 0 0 2rem 0;
+    color: #e2e8f0;
+    max-width: 700px;
+}
+
+.portal-hero-actions {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.btn-hero-primary {
+    background: #ffffff;
+    color: #1a365d;
+    padding: 0.75rem 1.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.btn-hero-primary:hover {
+    background: #f7fafc;
+    color: #1a365d;
+    text-decoration: none;
+}
+
+.btn-hero-cta {
+    background: #ed8936;
+    color: #ffffff;
+    padding: 0.75rem 1.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: background-color 0.2s ease;
+}
+
+.btn-hero-cta:hover {
+    background: #dd6b20;
+    text-decoration: none;
+    color: #ffffff;
+}
+
+.btn-hero-secondary {
+    background: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    padding: 0.75rem 1.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 1rem;
+    transition: background-color 0.2s ease;
+}
+
+.btn-hero-secondary:hover {
+    background: rgba(255, 255, 255, 0.3);
+    text-decoration: none;
+    color: #ffffff;
+}
+
+.portal-stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.portal-stat-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 1.5rem;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.portal-stat-number {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1a365d;
+    margin-bottom: 0.5rem;
+}
+
+.portal-stat-label {
+    color: #4a5568;
+    font-size: 0.95rem;
+}
+
+/* Trang Dịch vụ (/portal/services/) */
+.services-page-container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 1.5rem 0;
+}
+
+.services-page-header {
+    border-bottom: 2px solid #1a365d;
+    padding-bottom: 1rem;
+    margin-bottom: 2rem;
+}
+
+.services-page-title {
+    color: #1a365d;
+    margin: 0 0 0.5rem 0;
+    font-size: 1.75rem;
+    font-weight: 700;
+}
+
+.services-page-desc {
+    color: #4a5568;
+    margin: 0;
+    font-size: 0.95rem;
+}
+
+.services-cards-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+}
+
+.service-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.service-card-title {
+    color: #2b6cb0;
+    margin: 0 0 0.75rem 0;
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+.service-card-text {
+    color: #4a5568;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    margin: 0 0 1rem 0;
+}
+
+.service-card-link {
+    display: inline-block;
+    color: #1a365d;
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: color 0.15s ease;
+}
+
+.service-card-link:hover {
+    color: #2b6cb0;
+    text-decoration: underline;
+}
+
+.services-cache-info {
+    background: #ebf8ff;
+    border: 1px solid #bee3f8;
+    border-radius: 6px;
+    padding: 1rem;
+    font-size: 0.85rem;
+    color: #2c5282;
+    line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+    .portal-stats-grid,
+    .services-cards-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .portal-hero-banner {
+        padding: 2rem 1.25rem;
+    }
+
+    .portal-hero-title {
+        font-size: 1.75rem;
+    }
+}
+
+.portal-request-wrapper {
+    padding: 1.5rem 0;
+}
+

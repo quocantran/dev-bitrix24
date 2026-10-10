@@ -547,3 +547,32 @@
 .font-bold {
     font-weight: 700;
 }
+
+.quotation-card-signed {
+    border-left-color: #38a169;
+    background: #f0fff4;
+    border-color: #c6f6d5;
+}
+
+.quotation-icon-success {
+    color: #38a169;
+}
+
+.quotation-badge-success {
+    background: #c6f6d5;
+    color: #22543d;
+}
+
+.quotation-title-success {
+    color: #22543d;
+}
+
+.quotation-desc-success {
+    color: #276749;
+}
+
+.text-pending {
+    color: #a0aec0;
+    font-style: italic;
+}
+

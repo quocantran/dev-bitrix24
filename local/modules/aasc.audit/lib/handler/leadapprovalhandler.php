@@ -16,10 +16,6 @@ class LeadApprovalHandler
     private static array $prevStatusMap = [];
 
     /**
-     * Bắt sự kiện OnBeforeCrmDealUpdate: Chặn chuyển sang Invoice, In Progress, Final Invoice, Won
-     * nếu dự toán phí chưa được phê duyệt (UF_APPROVAL_STATUS !== APPROVED)
-     */
-    /**
      * Bắt sự kiện OnBeforeCrmDealUpdate: Chặn cập nhật Deal sang các giai đoạn tiếp theo
      * nếu dự toán phí chưa được phê duyệt (UF_APPROVAL_STATUS !== APPROVED)
      * hoặc người dùng không đủ thẩm quyền theo quy trình kiểm toán AASC

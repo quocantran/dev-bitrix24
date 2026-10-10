@@ -1,16 +1,22 @@
 <?php
-require($_SERVER["DOCUMENT_ROOT"]."/bitrix/header.php");
-$APPLICATION->SetTitle("Hồ Sơ Yêu Cầu Kiểm Toán Của Tôi - AASC");
+use Bitrix\Main\Loader;
+use Bitrix\Main\Page\Asset;
+use Aasc\Audit\Model\AuditRequestTable;
+use Bitrix\Iblock\ElementTable;
 
-global $USER;
+require($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/main/include/prolog_before.php");
+
+global $USER, $APPLICATION;
 if (!is_object($USER) || !$USER->IsAuthorized()) {
     LocalRedirect("/portal/auth/?backurl=" . urlencode($APPLICATION->GetCurPageParam()));
     die();
 }
 
-use Bitrix\Main\Loader;
-use Aasc\Audit\Model\AuditRequestTable;
-use Bitrix\Iblock\ElementTable;
+require($_SERVER["DOCUMENT_ROOT"]."/bitrix/header.php");
+$APPLICATION->SetTitle("Hồ Sơ Yêu Cầu Kiểm Toán Của Tôi - AASC");
+
+Asset::getInstance()->addCss('/portal/my-requests/style.css');
+Asset::getInstance()->addJs('/portal/my-requests/script.js');
 
 Loader::includeModule('aasc.audit');
 Loader::includeModule('iblock');
@@ -67,45 +73,45 @@ if (!empty($dealIds) && Loader::includeModule('crm')) {
 // Đăng ký theo dõi toàn bộ hồ sơ của người dùng qua kênh Push & Pull
 if (!empty($requests) && Loader::includeModule('pull')) {
     foreach ($requests as $r) {
-        \CPullWatch::Add($currentUserId, 'AASC_AUDIT_REQUEST_' . (int)$r['ID'], true);
+        \CPullWatch::Add($userId, 'AASC_AUDIT_REQUEST_' . (int)$r['ID'], true);
     }
 }
 ?>
 
-<div style="max-width: 1100px; margin: 0 auto; padding: 1.5rem 0;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+<div class="requests-container">
+    <div class="requests-header">
         <div>
-            <h2 style="color: #1a365d; font-size: 1.6rem; margin: 0 0 0.25rem 0; font-weight: 700;">Danh Sách Hồ Sơ Kiểm Toán Của Bạn</h2>
-            <p style="color: #4a5568; margin: 0; font-size: 0.95rem;">Theo dõi trạng thái thẩm định, dự toán chi phí và tiến độ kiểm toán trực tiếp từ chuyên viên AASC.</p>
+            <h2 class="requests-title">Danh Sách Hồ Sơ Kiểm Toán Của Bạn</h2>
+            <p class="requests-subtitle">Theo dõi trạng thái thẩm định, dự toán chi phí và tiến độ kiểm toán trực tiếp từ chuyên viên AASC.</p>
         </div>
         <div>
-            <a href="/portal/request/" style="background: #1a365d; color: #ffffff; padding: 0.65rem 1.25rem; border-radius: 4px; font-weight: 600; text-decoration: none; font-size: 0.95rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+            <a href="/portal/request/" class="btn-create-request">
                 + Gửi Yêu Cầu Mới
             </a>
         </div>
     </div>
 
     <?php if (empty($requests)): ?>
-        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 3rem 2rem; text-align: center;">
-            <p style="color: #718096; font-size: 1.05rem; margin-bottom: 1.5rem;">Bạn chưa có hồ sơ yêu cầu kiểm toán nào được ghi nhận trên hệ thống.</p>
-            <a href="/portal/request/" style="background: #ed8936; color: #ffffff; padding: 0.75rem 1.5rem; border-radius: 4px; font-weight: 600; text-decoration: none; font-size: 1rem;">
+        <div class="requests-empty-card">
+            <p class="requests-empty-text">Bạn chưa có hồ sơ yêu cầu kiểm toán nào được ghi nhận trên hệ thống.</p>
+            <a href="/portal/request/" class="btn-first-request">
                 Gửi Hồ Sơ Đầu Tiên
             </a>
         </div>
     <?php else: ?>
-        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <div style="overflow-x: auto;">
-                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;" id="myRequestsTable">
+        <div class="requests-table-card">
+            <div class="requests-table-scroll">
+                <table class="requests-table" id="myRequestsTable">
                     <thead>
-                        <tr style="background: #edf2f7; color: #2d3748; border-bottom: 2px solid #cbd5e0;">
-                            <th style="padding: 0.85rem 1rem;">Mã hồ sơ</th>
-                            <th style="padding: 0.85rem 1rem;">Doanh nghiệp & MST</th>
-                            <th style="padding: 0.85rem 1rem;">Dịch vụ yêu cầu</th>
-                            <th style="padding: 0.85rem 1rem;">Phí dự toán</th>
-                            <th style="padding: 0.85rem 1rem;">Ngày gửi</th>
-                            <th style="padding: 0.85rem 1rem;">Trạng thái xử lý</th>
-                            <th style="padding: 0.85rem 1rem;">Mã CRM</th>
-                            <th style="padding: 0.85rem 1rem; text-align: center;">Thao tác</th>
+                        <tr class="requests-table-head">
+                            <th class="requests-th">Mã hồ sơ</th>
+                            <th class="requests-th">Doanh nghiệp & MST</th>
+                            <th class="requests-th">Dịch vụ yêu cầu</th>
+                            <th class="requests-th">Phí dự toán</th>
+                            <th class="requests-th">Ngày gửi</th>
+                            <th class="requests-th">Trạng thái xử lý</th>
+                            <th class="requests-th">Mã CRM</th>
+                            <th class="requests-th text-center">Thao tác</th>
                         </tr>
                     </thead>
                     <tbody id="myRequestsTableBody">
@@ -120,78 +126,69 @@ if (!empty($requests) && Loader::includeModule('pull')) {
                             $dealStage = $dealRow ? (string)($dealRow['STAGE_ID'] ?? '') : '';
                             $opp = (float)($dealRow['OPPORTUNITY'] ?? ($leadRow['OPPORTUNITY'] ?? 0));
 
-                            // Xác định chính xác nhãn trạng thái và màu sắc tương ứng theo tiến trình nghiệp vụ
+                            // Xác định nhãn trạng thái và CSS class tương ứng theo tiến trình nghiệp vụ
                             if ($dealId > 0 && !empty($dealStage)) {
                                 if ($dealStage === 'C1:WON' || $dealStage === 'WON') {
                                     $statusLabel = 'Đã phát hành báo cáo (VSA 700)';
-                                    $badgeBg = '#d1fae5';
-                                    $badgeColor = '#065f46';
+                                    $badgeClass = 'badge-status-won';
                                 } elseif (in_array($dealStage, ['C1:REVIEW_DIRECTOR', 'C1:REVIEW_MANAGER'], true)) {
                                     $statusLabel = 'Soát xét hồ sơ kiểm toán';
-                                    $badgeBg = '#f3e8ff';
-                                    $badgeColor = '#6b21a8';
+                                    $badgeClass = 'badge-status-review';
                                 } elseif ($dealStage === 'C1:FIELDWORK' || $dealStage === 'EXECUTING') {
                                     $statusLabel = 'Kiểm toán thực địa';
-                                    $badgeBg = '#e0e7ff';
-                                    $badgeColor = '#3730a3';
+                                    $badgeClass = 'badge-status-fieldwork';
                                 } else {
                                     $statusLabel = 'Ký HĐ & Lập kế hoạch';
-                                    $badgeBg = '#fef3c7';
-                                    $badgeColor = '#92400e';
+                                    $badgeClass = 'badge-status-preparation';
                                 }
                             } elseif ($status === 'CONTRACT_SIGNED') {
                                 $statusLabel = 'Đã đồng ý ký HĐ (Chờ phân công)';
-                                $badgeBg = '#dbeafe';
-                                $badgeColor = '#1e40af';
+                                $badgeClass = 'badge-status-signed';
                             } elseif (in_array($leadStatus, ['PROCESSED', 'APPROVED', 'PROPOSAL_SENT'], true)) {
                                 $statusLabel = 'Báo giá sẵn sàng (Chờ ký HĐ)';
-                                $badgeBg = '#c6f6d5';
-                                $badgeColor = '#22543d';
+                                $badgeClass = 'badge-status-quote';
                             } elseif ($leadStatus === 'IN_PROCESS') {
                                 $statusLabel = 'Đang thẩm định & Lập dự toán';
-                                $badgeBg = '#feebc8';
-                                $badgeColor = '#c05621';
+                                $badgeClass = 'badge-status-process';
                             } elseif ($status === 'REJECTED' || $leadStatus === 'JUNK') {
                                 $statusLabel = 'Từ chối';
-                                $badgeBg = '#fed7d7';
-                                $badgeColor = '#9b2c2c';
+                                $badgeClass = 'badge-status-rejected';
                             } else {
                                 $statusLabel = 'Đang tiếp nhận';
-                                $badgeBg = '#ebf8ff';
-                                $badgeColor = '#2b6cb0';
+                                $badgeClass = 'badge-status-default';
                             }
 
                             $serviceName = $servicesMap[(int)$item['SERVICE_ID']] ?? 'Kiểm toán Báo cáo tài chính';
                         ?>
-                            <tr style="border-bottom: 1px solid #e2e8f0;">
-                                <td style="padding: 1rem; font-weight: 700; color: #1a365d;">#<?= (int)$item['ID'] ?></td>
-                                <td style="padding: 1rem;">
-                                    <div style="font-weight: 600; color: #2d3748;"><?= htmlspecialcharsbx($item['COMPANY_NAME']) ?></div>
-                                    <div style="font-size: 0.8rem; color: #718096;">MST: <?= htmlspecialcharsbx($item['TAX_CODE']) ?></div>
+                            <tr class="requests-row">
+                                <td class="requests-td requests-id-col">#<?= (int)$item['ID'] ?></td>
+                                <td class="requests-td">
+                                    <div class="requests-company-name"><?= htmlspecialcharsbx($item['COMPANY_NAME']) ?></div>
+                                    <div class="requests-tax-code">MST: <?= htmlspecialcharsbx($item['TAX_CODE']) ?></div>
                                 </td>
-                                <td style="padding: 1rem; color: #4a5568;"><?= htmlspecialcharsbx($serviceName) ?></td>
-                                <td style="padding: 1rem; font-family: monospace; color: #2d3748; font-weight: 600;">
-                                    <?= $opp > 0 ? number_format($opp, 0, ',', '.') . ' VNĐ' : '<span style="color:#a0aec0;font-weight:normal;font-style:italic;">Chờ dự toán</span>' ?>
+                                <td class="requests-td"><?= htmlspecialcharsbx($serviceName) ?></td>
+                                <td class="requests-td requests-fee-col">
+                                    <?= $opp > 0 ? number_format($opp, 0, ',', '.') . ' VNĐ' : '<span class="requests-fee-waiting">Chờ dự toán</span>' ?>
                                 </td>
-                                <td style="padding: 1rem; color: #718096; font-size: 0.85rem;">
+                                <td class="requests-td requests-date-col">
                                     <?= $item['CREATED_AT'] instanceof \Bitrix\Main\Type\DateTime ? $item['CREATED_AT']->format('d/m/Y H:i') : '' ?>
                                 </td>
-                                <td style="padding: 1rem;">
-                                    <span style="background: <?= $badgeBg ?>; color: <?= $badgeColor ?>; padding: 0.25rem 0.6rem; border-radius: 9999px; font-size: 0.8rem; font-weight: 600; display: inline-block;">
+                                <td class="requests-td">
+                                    <span class="badge-status <?= $badgeClass ?>">
                                         <?= htmlspecialcharsbx($statusLabel) ?>
                                     </span>
                                 </td>
-                                <td style="padding: 1rem; font-family: monospace; color: #4a5568; font-size: 0.85rem;">
+                                <td class="requests-td requests-crm-col">
                                     <?php if ($dealId > 0): ?>
-                                        <span style="color: #2b6cb0; font-weight: 600;">Deal #<?= $dealId ?></span>
+                                        <span class="requests-crm-deal">Deal #<?= $dealId ?></span>
                                     <?php elseif ($leadId > 0): ?>
                                         Lead #<?= $leadId ?>
                                     <?php else: ?>
-                                        <span style="color:#a0aec0;font-style:italic;">Đang tạo</span>
+                                        <span class="requests-fee-waiting">Đang tạo</span>
                                     <?php endif; ?>
                                 </td>
-                                <td style="padding: 1rem; text-align: center;">
-                                    <a href="/portal/my-requests/<?= (int)$item['ID'] ?>/" style="background: #2b6cb0; color: #ffffff; padding: 0.35rem 0.75rem; border-radius: 4px; font-size: 0.82rem; font-weight: 600; text-decoration: none; display: inline-block;">
+                                <td class="requests-td text-center">
+                                    <a href="/portal/my-requests/<?= (int)$item['ID'] ?>/" class="btn-view-detail">
                                         Xem tiến độ &rarr;
                                     </a>
                                 </td>
@@ -203,43 +200,6 @@ if (!empty($requests) && Loader::includeModule('pull')) {
         </div>
     <?php endif; ?>
 </div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    function refreshTable() {
-        fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-            .then(res => res.text())
-            .then(html => {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-                const newTbody = doc.querySelector('#myRequestsTableBody');
-                const curTbody = document.querySelector('#myRequestsTableBody');
-                if (newTbody && curTbody && newTbody.innerHTML.trim() !== curTbody.innerHTML.trim()) {
-                    curTbody.innerHTML = newTbody.innerHTML;
-                }
-            })
-            .catch(() => {});
-    }
-
-    // Tích hợp trực tiếp Bitrix Push & Pull WebSocket (Zero-Polling)
-    if (typeof BX !== 'undefined' && BX.PULL) {
-        BX.PULL.subscribe({
-            moduleId: 'aasc.audit',
-            command: 'request_status_updated',
-            callback: function() {
-                refreshTable();
-            }
-        });
-    }
-
-    // Tự động đồng bộ 1 lần khi người dùng quay lại tab này
-    document.addEventListener('visibilitychange', function() {
-        if (document.visibilityState === 'visible') {
-            refreshTable();
-        }
-    });
-});
-</script>
 
 <?php
 require($_SERVER["DOCUMENT_ROOT"]."/bitrix/footer.php");
