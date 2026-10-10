@@ -132,16 +132,50 @@ class LeadApprovalHandler
      */
     public static function onBeforeLeadUpdate(&$arFields): bool
     {
-        $restrictedStatuses = ["PROCESSED", "PROPOSAL_SENT"];
-        if (isset($arFields["STATUS_ID"]) && in_array($arFields["STATUS_ID"], $restrictedStatuses, true)) {
-            $leadId = (int)($arFields["ID"] ?? 0);
-            if ($leadId <= 0) {
+        $newStatusId = (string)($arFields["STATUS_ID"] ?? '');
+        $leadId = (int)($arFields["ID"] ?? 0);
+        if ($leadId <= 0 || empty($newStatusId)) {
+            return true;
+        }
+
+        // 1. Kiểm soát khi chuyển sang PROCESSED / PROPOSAL_SENT
+        if (in_array($newStatusId, ["PROCESSED", "PROPOSAL_SENT"], true)) {
+            $lead = \CCrmLead::GetByID($leadId, false);
+            if (!$lead) {
                 return true;
             }
 
-            global $USER_FIELD_MANAGER;
-            $statusVal = $USER_FIELD_MANAGER->GetUserFieldValue("CRM_LEAD", "UF_APPROVAL_STATUS", $leadId);
+            // Nếu Lead đã ở trạng thái này rồi thì bỏ qua
+            if ((string)($lead["STATUS_ID"] ?? '') === $newStatusId) {
+                return true;
+            }
 
+            // Kiểm tra chi phí dự toán (bắt buộc phải có trước khi phê duyệt)
+            $fee = (float)($arFields['OPPORTUNITY'] ?? ($lead['OPPORTUNITY'] ?? 0));
+            if ($fee <= 0 && !empty($arFields['UF_ESTIMATED_FEE'])) {
+                $fee = (float)$arFields['UF_ESTIMATED_FEE'];
+            }
+            if ($fee <= 0 && !empty($lead['UF_ESTIMATED_FEE'])) {
+                $fee = (float)$lead['UF_ESTIMATED_FEE'];
+            }
+
+            if ($fee <= 0) {
+                $msg = "Lỗi quy trình AASC: Vui lòng điền chi phí dịch vụ kiểm toán (Số tiền / Opportunity) trước khi phê duyệt phát hành báo giá!";
+                $arFields["RESULT_MESSAGE"] = $msg;
+                global $APPLICATION;
+                $APPLICATION->ThrowException($msg);
+                return false;
+            }
+
+            global $USER, $APPLICATION, $USER_FIELD_MANAGER;
+            $currentUserId = (int)($USER ? $USER->GetID() : 0);
+            $currentUserLogin = $USER ? (string)$USER->GetLogin() : '';
+            $isAdmin = ($currentUserId === 1 || ($USER && $USER->IsAdmin()));
+            $isDirector = ($isAdmin || $currentUserLogin === 'director' || $currentUserId === 4);
+            $isManager = ($currentUserLogin === 'manager' || $currentUserId === 5);
+
+            // Kiểm tra trạng thái phê duyệt hiện tại
+            $statusVal = $USER_FIELD_MANAGER->GetUserFieldValue("CRM_LEAD", "UF_APPROVAL_STATUS", $leadId);
             $xmlId = "";
             if (!empty($statusVal)) {
                 if (is_numeric($statusVal)) {
@@ -152,8 +186,45 @@ class LeadApprovalHandler
                 }
             }
 
-            if (!empty($statusVal) && $xmlId !== "APPROVED") {
-                $msg = "Lỗi quy trình: Báo giá cho khách hàng chưa được Trưởng phòng hoặc Ban Giám đốc phê duyệt!";
+            // A. Ban Giám đốc (Director) hoặc Admin thực hiện phê duyệt
+            if ($isDirector) {
+                $approvedEnumId = self::getApprovalStatusEnumId('APPROVED');
+                if ($approvedEnumId) {
+                    $arFields['UF_APPROVAL_STATUS'] = $approvedEnumId;
+                    $USER_FIELD_MANAGER->Update("CRM_LEAD", $leadId, ["UF_APPROVAL_STATUS" => $approvedEnumId]);
+                }
+                return true;
+            }
+
+            // B. Trưởng phòng (Manager) thực hiện
+            if ($isManager) {
+                if ($xmlId !== 'APPROVED') {
+                    $msg = "Lỗi quy trình AASC: Trưởng phòng (Manager) có vai trò lập dự toán chi phí ({$fee} VNĐ). Thẩm quyền duyệt phát hành báo giá sang trạng thái Đã xử lý (Processed) thuộc về Ban Giám đốc (Director). Vui lòng chuyển hồ sơ cho Ban Giám đốc phê duyệt!";
+                    $arFields["RESULT_MESSAGE"] = $msg;
+                    $APPLICATION->ThrowException($msg);
+                    return false;
+                }
+                return true;
+            }
+
+            // C. Các vai trò khác
+            if ($xmlId !== 'APPROVED') {
+                $msg = "Lỗi phân quyền AASC: Bạn không có quyền phê duyệt phát hành báo giá cho hồ sơ này.";
+                $arFields["RESULT_MESSAGE"] = $msg;
+                $APPLICATION->ThrowException($msg);
+                return false;
+            }
+        }
+
+        // 2. Chặn tự ý chuyển đổi Lead sang Deal (CONVERTED) khi khách hàng chưa ký hợp đồng trên Portal
+        if ($newStatusId === "CONVERTED") {
+            $auditRequest = \Aasc\Audit\Model\AuditRequestTable::getList([
+                'filter' => ['=CRM_LEAD_ID' => $leadId],
+                'select' => ['ID', 'CRM_DEAL_ID'],
+            ])->fetch();
+
+            if ($auditRequest && (int)($auditRequest['CRM_DEAL_ID'] ?? 0) <= 0) {
+                $msg = "Lỗi quy trình AASC: Hồ sơ kiểm toán đang ở giai đoạn Báo giá và đang chờ khách hàng chấp thuận ký hợp đồng trên Cổng thông tin (Portal). Chỉ khi khách hàng xác nhận ký hợp đồng thì hồ sơ mới được chuyển đổi sang Hợp đồng kiểm toán (Deal).";
                 $arFields["RESULT_MESSAGE"] = $msg;
                 global $APPLICATION;
                 $APPLICATION->ThrowException($msg);
@@ -162,6 +233,21 @@ class LeadApprovalHandler
         }
 
         return true;
+    }
+
+    /**
+     * Tra cứu ID giá trị enum của thuộc tính UF_APPROVAL_STATUS theo mã XML_ID
+     */
+    public static function getApprovalStatusEnumId(string $xmlId): ?int
+    {
+        $rs = \CUserFieldEnum::GetList([], [
+            'USER_FIELD_NAME' => 'UF_APPROVAL_STATUS',
+            'XML_ID'          => $xmlId,
+        ]);
+        if ($row = $rs->Fetch()) {
+            return (int)$row['ID'];
+        }
+        return null;
     }
 
     /**
@@ -315,6 +401,37 @@ class LeadApprovalHandler
                     'stepIndex' => $currentStep,
                 ]
             ]);
+        }
+
+        // Nếu chuyển sang PROCESSED: Ghi nhận Timeline CRM và bắn thông báo chuông cho Manager
+        if ($leadStatusId === 'PROCESSED' && Loader::includeModule('crm')) {
+            global $USER;
+            $authorId = (int)($USER ? $USER->GetID() : 4);
+            $lead = \CCrmLead::GetByID($leadId, false);
+            $feeVal = (float)($lead['OPPORTUNITY'] ?? 0);
+            $feeStr = $feeVal > 0 ? number_format($feeVal, 0, ',', '.') . ' VNĐ' : '';
+
+            \Bitrix\Crm\Timeline\CommentEntry::create([
+                'TEXT'      => 'Ban Giám đốc đã phê duyệt dự toán chi phí' . ($feeStr ? ' (' . $feeStr . ')' : '') . '. Hồ sơ được chuyển sang trạng thái Đã xử lý (Processed) để phát hành báo giá cho khách hàng trên Cổng thông tin.',
+                'AUTHOR_ID' => $authorId > 0 ? $authorId : 4,
+                'BINDINGS'  => [
+                    ['ENTITY_TYPE_ID' => \CCrmOwnerType::Lead, 'ENTITY_ID' => $leadId],
+                ],
+            ]);
+
+            if (Loader::includeModule('im')) {
+                $assignedId = (int)($lead['ASSIGNED_BY_ID'] ?? 5);
+                if ($assignedId > 0 && $assignedId !== $authorId) {
+                    \CIMNotify::Add([
+                        'TO_USER_ID'     => $assignedId,
+                        'FROM_USER_ID'   => $authorId,
+                        'NOTIFY_TYPE'    => IM_NOTIFY_SYSTEM,
+                        'NOTIFY_MODULE'  => 'aasc.audit',
+                        'NOTIFY_TAG'     => 'AASC|APPROVED|' . $leadId,
+                        'NOTIFY_MESSAGE' => 'Hồ sơ #' . $leadId . ' (' . ($lead['TITLE'] ?? '') . ') đã được Ban Giám đốc phê duyệt dự toán phí ' . $feeStr . '. Báo giá đã được phát hành cho khách hàng.',
+                    ]);
+                }
+            }
         }
     }
 

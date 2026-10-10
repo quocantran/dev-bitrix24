@@ -22,7 +22,7 @@ $progressPercent = min(100, max(0, round(($currentStep - 1) / 5 * 100)));
     <div class="detail-top-nav">
         <a href="/portal/my-requests/" class="btn-back-link">&larr; Quay lại danh sách hồ sơ</a>
         <div class="request-badge">
-            Hồ sơ #<strong><?=$requestId?></strong> &bull; <?=htmlspecialcharsbx($request['DATE_CREATE'])?>
+            Hồ sơ #<strong><?=$requestId?></strong><?php if (!empty($request['DATE_CREATE'])): ?> &bull; <?=htmlspecialcharsbx($request['DATE_CREATE'])?><?php endif; ?>
         </div>
     </div>
 
@@ -122,16 +122,16 @@ $progressPercent = min(100, max(0, round(($currentStep - 1) / 5 * 100)));
             <div class="info-table">
                 <div class="info-row">
                     <span class="info-label">Dịch vụ kiểm toán:</span>
-                    <span class="info-value font-medium"><?=htmlspecialcharsbx($request['AUDIT_TYPE'] ?: 'Kiểm toán báo cáo tài chính')?></span>
+                    <span class="info-value font-medium"><?=htmlspecialcharsbx($request['SERVICE_NAME'] ?: ($request['AUDIT_TYPE'] ?: 'Kiểm toán Báo cáo tài chính'))?></span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Quy mô doanh thu:</span>
-                    <span class="info-value font-medium"><?=htmlspecialcharsbx($request['REVENUE_SCALE'] ?: 'Chưa cung cấp')?></span>
+                    <span class="info-value font-medium"><?=htmlspecialcharsbx($request['ANNUAL_REVENUE_FORMATTED'] ?: ($request['REVENUE_SCALE'] ?: 'Chưa cung cấp'))?></span>
                 </div>
                 <?php if ($arResult['ESTIMATED_FEE'] > 0): ?>
                     <div class="info-row">
                         <span class="info-label">Phí dịch vụ:</span>
-                        <span class="info-value text-primary font-bold"><?=number_format($arResult['ESTIMATED_FEE'])?> VNĐ</span>
+                        <span class="info-value text-primary font-bold"><?=number_format($arResult['ESTIMATED_FEE'], 0, ',', '.')?> VNĐ</span>
                     </div>
                 <?php endif; ?>
                 <div class="info-row">
@@ -140,15 +140,15 @@ $progressPercent = min(100, max(0, round(($currentStep - 1) / 5 * 100)));
                 </div>
                 <div class="info-row">
                     <span class="info-label">Số điện thoại:</span>
-                    <span class="info-value"><?=htmlspecialcharsbx($request['CONTACT_PHONE'] ?: 'Chưa cung cấp')?></span>
+                    <span class="info-value"><?=htmlspecialcharsbx($request['PHONE'] ?: ($request['CONTACT_PHONE'] ?: 'Chưa cung cấp'))?></span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Địa chỉ email:</span>
-                    <span class="info-value"><?=htmlspecialcharsbx($request['CONTACT_EMAIL'] ?: 'Chưa cung cấp')?></span>
+                    <span class="info-value"><?=htmlspecialcharsbx($request['EMAIL'] ?: ($request['CONTACT_EMAIL'] ?: 'Chưa cung cấp'))?></span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Mã Lead CRM:</span>
-                    <span class="info-value font-mono">#<?=htmlspecialcharsbx($request['CRM_LEAD_ID'])?></span>
+                    <span class="info-value font-mono"><?=(!empty($request['CRM_LEAD_ID']) && (int)$request['CRM_LEAD_ID'] > 0) ? '#' . htmlspecialcharsbx($request['CRM_LEAD_ID']) : '<span style="color:#a0aec0;font-style:italic;">Đang khởi tạo</span>'?></span>
                 </div>
                 <?php if (!empty($request['CRM_DEAL_ID']) && (int)$request['CRM_DEAL_ID'] > 0): ?>
                     <div class="info-row">

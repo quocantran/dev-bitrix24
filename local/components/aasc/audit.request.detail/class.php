@@ -152,6 +152,94 @@ class AascAuditRequestDetailComponent extends \CBitrixComponent
             }
         }
 
+        // Bổ sung thông tin số điện thoại & email nếu bản ghi còn thiếu
+        $phone = trim((string)($request['PHONE'] ?? ''));
+        $email = trim((string)($request['EMAIL'] ?? ''));
+
+        $requestUserId = (int)($request['USER_ID'] ?? 0);
+        if (($phone === '' || $email === '') && $requestUserId > 0) {
+            $userRow = \Bitrix\Main\UserTable::getRow([
+                'select' => ['ID', 'EMAIL', 'PERSONAL_PHONE'],
+                'filter' => ['=ID' => $requestUserId],
+            ]);
+            if ($userRow) {
+                if ($phone === '' && !empty($userRow['PERSONAL_PHONE'])) {
+                    $phone = trim((string)$userRow['PERSONAL_PHONE']);
+                }
+                if ($email === '' && !empty($userRow['EMAIL'])) {
+                    $email = trim((string)$userRow['EMAIL']);
+                }
+            }
+        }
+
+        if (($phone === '' || $email === '') && $leadId > 0 && Loader::includeModule('crm')) {
+            $fmRes = \CCrmFieldMulti::GetList(
+                ['ID' => 'ASC'],
+                [
+                    'ENTITY_ID' => \CCrmOwnerType::LeadName,
+                    'ELEMENT_ID' => $leadId,
+                ]
+            );
+            while ($fm = $fmRes->Fetch()) {
+                if ($fm['TYPE_ID'] === 'PHONE' && $phone === '') {
+                    $phone = trim((string)$fm['VALUE']);
+                }
+                if ($fm['TYPE_ID'] === 'EMAIL' && $email === '') {
+                    $email = trim((string)$fm['VALUE']);
+                }
+            }
+        }
+
+        // Định dạng thời gian tạo hồ sơ
+        $createdAtFormatted = '';
+        if (!empty($request['CREATED_AT'])) {
+            if ($request['CREATED_AT'] instanceof \Bitrix\Main\Type\DateTime) {
+                $createdAtFormatted = $request['CREATED_AT']->format('d/m/Y H:i');
+            } else {
+                $createdAtFormatted = (string)$request['CREATED_AT'];
+            }
+        }
+
+        // Lấy tên loại hình dịch vụ kiểm toán
+        $servicesMap = [
+            1 => 'Kiểm toán Báo cáo tài chính',
+            2 => 'Kiểm toán Quyết toán vốn đầu tư',
+            3 => 'Thẩm định giá tài sản',
+            4 => 'Tư vấn thuế doanh nghiệp',
+        ];
+        if (Loader::includeModule('iblock')) {
+            $iblock = \CIBlock::GetList([], ['TYPE' => 'services', '=CODE' => 'audit_services'])->Fetch();
+            if ($iblock) {
+                $resServices = \Bitrix\Iblock\ElementTable::getList([
+                    'select' => ['ID', 'NAME'],
+                    'filter' => ['=IBLOCK_ID' => (int)$iblock['ID'], '=ACTIVE' => 'Y'],
+                ]);
+                while ($s = $resServices->fetch()) {
+                    $servicesMap[(int)$s['ID']] = $s['NAME'];
+                }
+            }
+        }
+        $serviceName = $servicesMap[(int)($request['SERVICE_ID'] ?? 0)] ?? 'Kiểm toán Báo cáo tài chính';
+
+        // Quy mô doanh thu
+        $annualRevenue = (float)($request['ANNUAL_REVENUE'] ?? 0);
+        $revenueFormatted = ($annualRevenue > 0)
+            ? number_format($annualRevenue, 0, ',', '.') . ' VNĐ'
+            : 'Chưa cung cấp';
+
+        // Gán lại vào $request với đầy đủ alias tương thích
+        $request['PHONE'] = $phone;
+        $request['CONTACT_PHONE'] = $phone;
+        $request['EMAIL'] = $email;
+        $request['CONTACT_EMAIL'] = $email;
+        $request['AUDIT_TYPE'] = $serviceName;
+        $request['SERVICE_NAME'] = $serviceName;
+        $request['REVENUE_SCALE'] = $revenueFormatted;
+        $request['ANNUAL_REVENUE_FORMATTED'] = $revenueFormatted;
+        $request['DATE_CREATE'] = $createdAtFormatted;
+        $request['CREATED_AT_FORMATTED'] = $createdAtFormatted;
+
+        $this->arResult['REQUEST'] = $request;
         $this->arResult['LEAD'] = $leadData;
         $this->arResult['DEAL'] = $dealData;
         $this->arResult['ASSIGNED_USER_NAME'] = $assignedUserName;
