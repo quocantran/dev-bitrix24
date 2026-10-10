@@ -39,6 +39,10 @@ class CrmBridgeService
             'ASSIGNED_BY_ID' => $managerId,
             'SOURCE_ID'      => 'WEB_PORTAL',
             'OPPORTUNITY'    => 0,
+            'CURRENCY_ID'    => 'VND',
+            'ACCOUNT_CURRENCY_ID' => 'VND',
+            'EXCH_RATE'      => 1.0,
+            'OPPORTUNITY_ACCOUNT' => 0.0,
             'COMMENTS'       => 'MST: ' . ($data['TAX_CODE'] ?? '') . ' | Doanh thu: ' . number_format($revenue) . ' VNĐ',
             'FM' => [
                 'EMAIL' => ['n0' => ['VALUE' => $data['EMAIL'] ?? '', 'VALUE_TYPE' => 'WORK']],

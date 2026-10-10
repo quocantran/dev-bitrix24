@@ -301,36 +301,48 @@ class Request extends Controller
 
         // Tạo Deal trong Category 1: Quy trình Kiểm toán AASC
         $dealFields = [
-            'TITLE'          => 'Hợp đồng kiểm toán: ' . ($request['COMPANY_NAME'] ?? ''),
-            'CATEGORY_ID'    => 1,
-            'STAGE_ID'       => 'C1:PREPARATION',
-            'OPENED'         => 'Y',
-            'ASSIGNED_BY_ID' => $seniorId,
-            'OPPORTUNITY'    => $fee,
-            'CURRENCY_ID'    => $baseCurrency,
-            'COMPANY_TITLE'  => $request['COMPANY_NAME'] ?? '',
-            'COMMENTS'       => 'Mã yêu cầu: #' . $requestId . ' | MST: ' . ($request['TAX_CODE'] ?? '') . ' | Doanh thu: ' . number_format((float)($request['ANNUAL_REVENUE'] ?? 0)) . ' VNĐ',
-            'LEAD_ID'        => $leadId,
+            'TITLE'               => 'Hợp đồng kiểm toán: ' . ($request['COMPANY_NAME'] ?? ''),
+            'CATEGORY_ID'         => 1,
+            'STAGE_ID'            => 'C1:PREPARATION',
+            'OPENED'              => 'Y',
+            'ASSIGNED_BY_ID'      => $seniorId,
+            'OPPORTUNITY'         => $fee,
+            'CURRENCY_ID'         => 'VND',
+            'ACCOUNT_CURRENCY_ID' => 'VND',
+            'EXCH_RATE'           => 1.0,
+            'OPPORTUNITY_ACCOUNT' => $fee,
+            'COMPANY_TITLE'       => $request['COMPANY_NAME'] ?? '',
+            'COMMENTS'            => 'Mã yêu cầu: #' . $requestId . ' | MST: ' . ($request['TAX_CODE'] ?? '') . ' | Doanh thu: ' . number_format((float)($request['ANNUAL_REVENUE'] ?? 0)) . ' VNĐ',
+            'LEAD_ID'             => $leadId,
+            'IS_PORTAL_SIGN'      => true,
         ];
 
-        $dealObj = new \CCrmDeal(false);
-        $dealId = $dealObj->Add($dealFields, true, ['CURRENT_USER' => 1, 'CATEGORY_ID' => 1]);
+        \Aasc\Audit\Handler\LeadApprovalHandler::$isPortalSign = true;
+        try {
+            $dealObj = new \CCrmDeal(false);
+            $dealId = $dealObj->Add($dealFields, true, ['CURRENT_USER' => 1, 'CATEGORY_ID' => 1]);
 
-        if (!$dealId) {
-            $this->addError(new Error('Không thể khởi tạo Deal kiểm toán: ' . $dealObj->LAST_ERROR));
-            return null;
+            if (!$dealId) {
+                $this->addError(new Error('Không thể khởi tạo Deal kiểm toán: ' . $dealObj->LAST_ERROR));
+                return null;
+            }
+
+            // Cập nhật CRM_DEAL_ID và trạng thái vào aasc_audit_request
+            AuditRequestTable::update($requestId, [
+                'CRM_DEAL_ID' => (int)$dealId,
+                'STATUS'      => 'C1:PREPARATION',
+            ]);
+
+            // Cập nhật trạng thái Lead thành CONVERTED
+            $leadObj = new \CCrmLead(false);
+            $leadUpdate = [
+                'STATUS_ID'      => 'CONVERTED',
+                'IS_PORTAL_SIGN' => true,
+            ];
+            $leadObj->Update($leadId, $leadUpdate, true, ['CURRENT_USER' => 1]);
+        } finally {
+            \Aasc\Audit\Handler\LeadApprovalHandler::$isPortalSign = false;
         }
-
-        // Cập nhật CRM_DEAL_ID và trạng thái vào aasc_audit_request
-        AuditRequestTable::update($requestId, [
-            'CRM_DEAL_ID' => (int)$dealId,
-            'STATUS'      => 'C1:PREPARATION',
-        ]);
-
-        // Cập nhật trạng thái Lead thành CONVERTED
-        $leadObj = new \CCrmLead(false);
-        $leadUpdate = ['STATUS_ID' => 'CONVERTED'];
-        $leadObj->Update($leadId, $leadUpdate, true, ['CURRENT_USER' => 1]);
 
         // Ghi nhận vào Timeline
         \Bitrix\Crm\Timeline\CommentEntry::create([

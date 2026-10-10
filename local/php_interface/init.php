@@ -44,6 +44,13 @@ $eventManager->addEventHandler(
     ['\Aasc\Audit\Handler\LeadApprovalHandler', 'onBeforeDealUpdate']
 );
 
+// Chặn tạo DEAL chuyển đổi từ Lead nếu khách hàng chưa ký hợp đồng trên Portal
+$eventManager->addEventHandler(
+    'crm',
+    'OnBeforeCrmDealAdd',
+    ['\Aasc\Audit\Handler\LeadApprovalHandler', 'onBeforeDealAdd']
+);
+
 // Bắn thông báo nội bộ và đẩy real-time Push server khi có Lead mới
 $eventManager->addEventHandler(
     'crm',

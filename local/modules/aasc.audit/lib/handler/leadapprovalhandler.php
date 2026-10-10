@@ -6,6 +6,9 @@ use Bitrix\Main\UserTable;
 
 class LeadApprovalHandler
 {
+    /** Cờ đánh dấu luồng ký hợp đồng hợp lệ từ Cổng thông tin (Portal) */
+    public static bool $isPortalSign = false;
+
     /**
      * Bắt sự kiện OnBeforeCrmDealUpdate: Chặn chuyển sang Invoice, In Progress, Final Invoice, Won
      * nếu dự toán phí chưa được phê duyệt (UF_APPROVAL_STATUS !== APPROVED)
@@ -25,6 +28,14 @@ class LeadApprovalHandler
 
         $newStageId = (string)($arFields["STAGE_ID"] ?? '');
         $currentStageId = (string)($deal["STAGE_ID"] ?? '');
+
+        // Đảm bảo đơn vị tiền tệ của Deal luôn là VND
+        if (isset($arFields['CURRENCY_ID']) && $arFields['CURRENCY_ID'] !== 'VND') {
+            $arFields['CURRENCY_ID'] = 'VND';
+        }
+        if (isset($arFields['ACCOUNT_CURRENCY_ID']) && $arFields['ACCOUNT_CURRENCY_ID'] !== 'VND') {
+            $arFields['ACCOUNT_CURRENCY_ID'] = 'VND';
+        }
 
         // Nếu không đổi sang stage mới (đã ở stage đó rồi) thì bỏ qua
         if (empty($newStageId) || $currentStageId === $newStageId) {
@@ -134,24 +145,85 @@ class LeadApprovalHandler
     {
         $newStatusId = (string)($arFields["STATUS_ID"] ?? '');
         $leadId = (int)($arFields["ID"] ?? 0);
-        if ($leadId <= 0 || empty($newStatusId)) {
+        if ($leadId <= 0) {
             return true;
         }
 
-        // 1. Kiểm soát khi chuyển sang PROCESSED / PROPOSAL_SENT
-        if (in_array($newStatusId, ["PROCESSED", "PROPOSAL_SENT"], true)) {
-            $lead = \CCrmLead::GetByID($leadId, false);
-            if (!$lead) {
-                return true;
+        $lead = \CCrmLead::GetByID($leadId, false);
+        if (!$lead) {
+            return true;
+        }
+
+        $prevStatus = (string)($lead['STATUS_ID'] ?? 'NEW');
+        $prevFee = (float)($lead['OPPORTUNITY'] ?? 0);
+        $effectiveStatus = !empty($newStatusId) ? $newStatusId : $prevStatus;
+        $newFee = isset($arFields['OPPORTUNITY']) ? (float)$arFields['OPPORTUNITY'] : $prevFee;
+
+        // Đảm bảo tiền tệ luôn là VND
+        $arFields['CURRENCY_ID'] = 'VND';
+        $arFields['ACCOUNT_CURRENCY_ID'] = 'VND';
+        $arFields['EXCH_RATE'] = 1.0;
+        if (isset($arFields['OPPORTUNITY'])) {
+            $arFields['OPPORTUNITY_ACCOUNT'] = (float)$arFields['OPPORTUNITY'];
+        }
+
+        global $USER, $APPLICATION, $USER_FIELD_MANAGER;
+        $currentUserId = (int)($USER ? $USER->GetID() : 0);
+        $currentUserLogin = $USER ? (string)$USER->GetLogin() : '';
+        $isAdmin = ($currentUserId === 1 || ($USER && $USER->IsAdmin()));
+        $isDirector = ($isAdmin || $currentUserLogin === 'director' || $currentUserId === 4);
+        $isManager = ($currentUserLogin === 'manager' || $currentUserId === 5);
+
+        // 1. Khi chuyển sang IN_PROCESS và nhập tiền xong -> Bắn thông báo chuông tới Director để duyệt
+        $feeChanged = isset($arFields['OPPORTUNITY']) && abs((float)$arFields['OPPORTUNITY'] - $prevFee) > 0.01;
+        $statusChangedToInProcess = ($effectiveStatus === 'IN_PROCESS' && $prevStatus !== 'IN_PROCESS');
+        if ($effectiveStatus === 'IN_PROCESS' && $newFee > 0 && ($statusChangedToInProcess || $feeChanged || $prevFee <= 0)) {
+            $waitingDirEnumId = self::getApprovalStatusEnumId('WAITING_DIR');
+            if ($waitingDirEnumId) {
+                $arFields['UF_APPROVAL_STATUS'] = $waitingDirEnumId;
+                $USER_FIELD_MANAGER->Update("CRM_LEAD", $leadId, ["UF_APPROVAL_STATUS" => $waitingDirEnumId]);
             }
 
+            // Gửi thông báo chuông nội bộ cho Director
+            $directorUser = \Bitrix\Main\UserTable::getList([
+                'filter' => ['=LOGIN' => 'director', '=ACTIVE' => 'Y'],
+                'select' => ['ID'],
+            ])->fetch();
+            $directorId = $directorUser ? (int)$directorUser['ID'] : 4;
+
+            if (\Bitrix\Main\Loader::includeModule('im') && $currentUserId !== $directorId) {
+                \CIMNotify::Add([
+                    'TO_USER_ID'     => $directorId,
+                    'FROM_USER_ID'   => $currentUserId > 0 ? $currentUserId : 5,
+                    'NOTIFY_TYPE'    => IM_NOTIFY_SYSTEM,
+                    'NOTIFY_MODULE'  => 'aasc.audit',
+                    'NOTIFY_TAG'     => 'AASC|WAITING_DIR|' . $leadId . '|' . time(),
+                    'NOTIFY_MESSAGE' => 'Trưởng phòng đã thẩm định và lập dự toán chi phí ' . number_format($newFee, 0, ',', '.') . ' VND cho hồ sơ #' . $leadId . ' (' . ($lead['TITLE'] ?? '') . '). Vui lòng vào xem xét và phê duyệt sang trạng thái Đã xử lý (Processed).',
+                    'NOTIFY_LINK'    => '/crm/lead/details/' . $leadId . '/',
+                ]);
+            }
+
+            // Ghi nhận vào CRM Timeline
+            if (\Bitrix\Main\Loader::includeModule('crm')) {
+                \Bitrix\Crm\Timeline\CommentEntry::create([
+                    'TEXT'      => 'Trưởng phòng đã lập dự toán chi phí: ' . number_format($newFee, 0, ',', '.') . ' VND và chuyển hồ sơ sang trạng thái Đang xử lý (In Progress) để trình Ban Giám đốc phê duyệt.',
+                    'AUTHOR_ID' => $currentUserId > 0 ? $currentUserId : 5,
+                    'BINDINGS'  => [
+                        ['ENTITY_TYPE_ID' => \CCrmOwnerType::Lead, 'ENTITY_ID' => $leadId],
+                    ],
+                ]);
+            }
+        }
+
+        // 2. Kiểm soát khi chuyển sang PROCESSED / PROPOSAL_SENT
+        if (in_array($newStatusId, ["PROCESSED", "PROPOSAL_SENT"], true)) {
             // Nếu Lead đã ở trạng thái này rồi thì bỏ qua
-            if ((string)($lead["STATUS_ID"] ?? '') === $newStatusId) {
+            if ($prevStatus === $newStatusId) {
                 return true;
             }
 
             // Kiểm tra chi phí dự toán (bắt buộc phải có trước khi phê duyệt)
-            $fee = (float)($arFields['OPPORTUNITY'] ?? ($lead['OPPORTUNITY'] ?? 0));
+            $fee = $newFee;
             if ($fee <= 0 && !empty($arFields['UF_ESTIMATED_FEE'])) {
                 $fee = (float)$arFields['UF_ESTIMATED_FEE'];
             }
@@ -162,17 +234,9 @@ class LeadApprovalHandler
             if ($fee <= 0) {
                 $msg = "Lỗi quy trình AASC: Vui lòng điền chi phí dịch vụ kiểm toán (Số tiền / Opportunity) trước khi phê duyệt phát hành báo giá!";
                 $arFields["RESULT_MESSAGE"] = $msg;
-                global $APPLICATION;
                 $APPLICATION->ThrowException($msg);
                 return false;
             }
-
-            global $USER, $APPLICATION, $USER_FIELD_MANAGER;
-            $currentUserId = (int)($USER ? $USER->GetID() : 0);
-            $currentUserLogin = $USER ? (string)$USER->GetLogin() : '';
-            $isAdmin = ($currentUserId === 1 || ($USER && $USER->IsAdmin()));
-            $isDirector = ($isAdmin || $currentUserLogin === 'director' || $currentUserId === 4);
-            $isManager = ($currentUserLogin === 'manager' || $currentUserId === 5);
 
             // Kiểm tra trạng thái phê duyệt hiện tại
             $statusVal = $USER_FIELD_MANAGER->GetUserFieldValue("CRM_LEAD", "UF_APPROVAL_STATUS", $leadId);
@@ -199,7 +263,7 @@ class LeadApprovalHandler
             // B. Trưởng phòng (Manager) thực hiện
             if ($isManager) {
                 if ($xmlId !== 'APPROVED') {
-                    $msg = "Lỗi quy trình AASC: Trưởng phòng (Manager) có vai trò lập dự toán chi phí ({$fee} VNĐ). Thẩm quyền duyệt phát hành báo giá sang trạng thái Đã xử lý (Processed) thuộc về Ban Giám đốc (Director). Vui lòng chuyển hồ sơ cho Ban Giám đốc phê duyệt!";
+                    $msg = "Lỗi quy trình AASC: Trưởng phòng (Manager) có vai trò lập dự toán chi phí (" . number_format($fee, 0, ',', '.') . " VNĐ). Thẩm quyền duyệt phát hành báo giá sang trạng thái Đã xử lý (Processed) thuộc về Ban Giám đốc (Director). Vui lòng chuyển hồ sơ cho Ban Giám đốc phê duyệt!";
                     $arFields["RESULT_MESSAGE"] = $msg;
                     $APPLICATION->ThrowException($msg);
                     return false;
@@ -216,20 +280,68 @@ class LeadApprovalHandler
             }
         }
 
-        // 2. Chặn tự ý chuyển đổi Lead sang Deal (CONVERTED) khi khách hàng chưa ký hợp đồng trên Portal
+        // 3. Chặn tự ý chuyển đổi Lead sang Deal (CONVERTED) khi khách hàng chưa ký hợp đồng trên Portal
         if ($newStatusId === "CONVERTED") {
             $auditRequest = \Aasc\Audit\Model\AuditRequestTable::getList([
                 'filter' => ['=CRM_LEAD_ID' => $leadId],
                 'select' => ['ID', 'CRM_DEAL_ID'],
             ])->fetch();
 
-            if ($auditRequest && (int)($auditRequest['CRM_DEAL_ID'] ?? 0) <= 0) {
+            $isSignedFromPortal = !empty($arFields['IS_PORTAL_SIGN']) || self::$isPortalSign;
+            if ($auditRequest && (int)($auditRequest['CRM_DEAL_ID'] ?? 0) <= 0 && !$isSignedFromPortal) {
                 $msg = "Lỗi quy trình AASC: Hồ sơ kiểm toán đang ở giai đoạn Báo giá và đang chờ khách hàng chấp thuận ký hợp đồng trên Cổng thông tin (Portal). Chỉ khi khách hàng xác nhận ký hợp đồng thì hồ sơ mới được chuyển đổi sang Hợp đồng kiểm toán (Deal).";
                 $arFields["RESULT_MESSAGE"] = $msg;
-                global $APPLICATION;
                 $APPLICATION->ThrowException($msg);
                 return false;
             }
+        }
+
+        return true;
+    }
+
+    /**
+     * Bắt sự kiện OnBeforeCrmDealAdd: Chặn tạo Deal nếu chuyển đổi từ Lead mà khách hàng chưa ký hợp đồng trên Portal
+     */
+    public static function onBeforeDealAdd(&$arFields): bool
+    {
+        $leadId = (int)($arFields['LEAD_ID'] ?? 0);
+        if ($leadId <= 0) {
+            return true;
+        }
+
+        // Đảm bảo Deal luôn có đơn vị tiền tệ là VND
+        $arFields['CURRENCY_ID'] = 'VND';
+        $arFields['ACCOUNT_CURRENCY_ID'] = 'VND';
+        $arFields['EXCH_RATE'] = 1.0;
+        if (isset($arFields['OPPORTUNITY'])) {
+            $arFields['OPPORTUNITY_ACCOUNT'] = (float)$arFields['OPPORTUNITY'];
+        }
+
+        // Kiểm tra xem Lead này có liên kết với yêu cầu kiểm toán nào trong aasc_audit_request không
+        $auditRequest = \Aasc\Audit\Model\AuditRequestTable::getList([
+            'filter' => ['=CRM_LEAD_ID' => $leadId],
+            'select' => ['ID', 'CRM_DEAL_ID'],
+        ])->fetch();
+
+        if (!$auditRequest) {
+            return true;
+        }
+
+        // Kiểm tra xem Deal này có thực sự đến từ thao tác ký hợp đồng trên Portal của khách hàng không
+        $isSignedFromPortal = !empty($arFields['IS_PORTAL_SIGN']) || self::$isPortalSign;
+
+        // Nếu khách hàng chưa ký hợp đồng trên Portal hoặc hồ sơ đã có Deal
+        if (!$isSignedFromPortal) {
+            $existingDealId = (int)($auditRequest['CRM_DEAL_ID'] ?? 0);
+            if ($existingDealId > 0) {
+                $msg = "Lỗi quy trình AASC: Hồ sơ kiểm toán này đã có Hợp đồng kiểm toán (Deal #{$existingDealId}). Không thể chuyển đổi tạo thêm Deal mới từ Lead này.";
+            } else {
+                $msg = "Lỗi quy trình AASC: Hồ sơ kiểm toán đang ở giai đoạn Báo giá và đang chờ khách hàng chấp thuận ký hợp đồng trên Cổng thông tin (Portal). Chỉ khi khách hàng xác nhận ký hợp đồng thì hồ sơ mới được chuyển đổi sang Hợp đồng kiểm toán (Deal).";
+            }
+            $arFields["RESULT_MESSAGE"] = $msg;
+            global $APPLICATION;
+            $APPLICATION->ThrowException($msg);
+            return false;
         }
 
         return true;
